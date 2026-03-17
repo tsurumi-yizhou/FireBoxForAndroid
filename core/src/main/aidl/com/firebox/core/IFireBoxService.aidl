@@ -7,6 +7,8 @@ import com.firebox.core.ChatCompletionResult;
 import com.firebox.core.IChatStreamCallback;
 import com.firebox.core.EmbeddingRequest;
 import com.firebox.core.EmbeddingResult;
+import com.firebox.core.FunctionCallRequest;
+import com.firebox.core.FunctionCallResult;
 
 // 定义跨进程通信接口
 interface IFireBoxService {
@@ -38,4 +40,7 @@ interface IFireBoxService {
 
     // 嵌入
     EmbeddingResult createEmbeddings(in EmbeddingRequest req);
+
+    // 结构化函数调用
+    FunctionCallResult callFunction(in FunctionCallRequest req);
 }

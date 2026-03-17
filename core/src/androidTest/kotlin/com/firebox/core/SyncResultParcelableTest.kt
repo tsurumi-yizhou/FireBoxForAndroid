@@ -45,6 +45,27 @@ class SyncResultParcelableTest {
         assertNull(restored.response)
     }
 
+    @Test
+    fun functionCallResult_roundTripsThroughParcel() {
+        val result =
+            FunctionCallResult(
+                response =
+                    FunctionCallResponse(
+                        virtualModelId = "chat-default",
+                        outputJson = """{"label":"ok"}""",
+                        selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
+                        usage = Usage(2, 3, 5),
+                        finishReason = "stop",
+                    ),
+                error = null,
+            )
+
+        val restored = parcelRoundTrip(result)
+
+        assertEquals(result, restored)
+        assertNull(restored.error)
+    }
+
     private inline fun <reified T : Parcelable> parcelRoundTrip(value: T): T {
         val parcel = Parcel.obtain()
         return try {

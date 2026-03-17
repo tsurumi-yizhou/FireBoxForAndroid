@@ -13,6 +13,8 @@ import com.firebox.core.ChatStreamEvent
 import com.firebox.core.EmbeddingRequest
 import com.firebox.core.EmbeddingResponse
 import com.firebox.core.FireBoxError
+import com.firebox.core.FunctionCallRequest
+import com.firebox.core.FunctionCallResponse
 import com.firebox.core.IChatStreamCallback
 import com.firebox.core.ModelCandidateInfo
 import com.firebox.core.ProviderSelection
@@ -93,6 +95,28 @@ internal class FireBoxAiDispatcher(
                 embeddings = result.embeddings,
                 selection = candidate.selection,
                 usage = result.usage,
+            )
+        }
+    }
+
+    suspend fun callFunction(
+        snapshot: RuntimeSnapshot,
+        request: FunctionCallRequest,
+    ): FunctionCallResponse {
+        validateFunctionCallRequest(request)
+        val route = resolveRoute(snapshot, request.virtualModelId)
+        return executeCandidates(
+            route = route,
+            snapshot = snapshot,
+            capability = ProviderCapability.FunctionCall,
+        ) { candidate ->
+            val result = providerGateway.callFunction(candidate.provider, candidate.modelId, request)
+            FunctionCallResponse(
+                virtualModelId = request.virtualModelId,
+                outputJson = result.outputJson,
+                selection = candidate.selection,
+                usage = result.usage,
+                finishReason = result.finishReason,
             )
         }
     }
@@ -349,6 +373,24 @@ internal class FireBoxAiDispatcher(
         }
     }
 
+    private fun validateFunctionCallRequest(request: FunctionCallRequest) {
+        if (request.virtualModelId.isBlank()) {
+            throw invalidArgument("virtualModelId 不能为空")
+        }
+        if (request.functionName.isBlank()) {
+            throw invalidArgument("functionName 不能为空")
+        }
+        if (request.inputJson.isBlank()) {
+            throw invalidArgument("inputJson 不能为空")
+        }
+        if (request.inputSchemaJson.isBlank()) {
+            throw invalidArgument("inputSchemaJson 不能为空")
+        }
+        if (request.outputSchemaJson.isBlank()) {
+            throw invalidArgument("outputSchemaJson 不能为空")
+        }
+    }
+
     private fun invalidArgument(message: String): FireBoxServiceException =
         FireBoxServiceException(
             FireBoxError(
@@ -411,12 +453,14 @@ private fun RouteRule.capability(): ProviderCapability =
 private enum class ProviderCapability {
     Chat,
     Embedding,
+    FunctionCall,
     ;
 
     fun isSupportedBy(type: ProviderType): Boolean =
         when (this) {
             Chat -> true
             Embedding -> type == ProviderType.OpenAI || type == ProviderType.Gemini
+            FunctionCall -> type == ProviderType.OpenAI
         }
 }
 

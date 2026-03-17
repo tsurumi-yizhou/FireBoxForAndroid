@@ -1,4 +1,4 @@
-﻿package com.firebox.client
+package com.firebox.client
 
 import android.content.ComponentName
 import android.content.Context
@@ -13,6 +13,8 @@ import com.firebox.client.model.FireBoxChatRequest
 import com.firebox.client.model.FireBoxChatResult
 import com.firebox.client.model.FireBoxEmbeddingRequest
 import com.firebox.client.model.FireBoxEmbeddingResult
+import com.firebox.client.model.FireBoxFunctionResult
+import com.firebox.client.model.FireBoxFunctionSpec
 import com.firebox.client.model.FireBoxModelInfo
 import com.firebox.client.model.FireBoxStreamEvent
 import com.firebox.core.ChatStreamEvent as CoreChatStreamEvent
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.serialization.serializer
 
 class FireBoxClient private constructor(private val context: Context) {
 
@@ -123,32 +126,29 @@ class FireBoxClient private constructor(private val context: Context) {
         }
     }
 
-    fun performOperation(): String? {
-        return try {
+    fun performOperation(): String? =
+        try {
             fireBoxService?.performOperation()
         } catch (e: RemoteException) {
             Log.e(TAG, "Failed to perform operation", e)
             null
         }
-    }
 
-    fun getVersionCode(): Int {
-        return try {
+    fun getVersionCode(): Int =
+        try {
             fireBoxService?.versionCode ?: -1
         } catch (e: RemoteException) {
             Log.e(TAG, "Failed to get version code", e)
             -1
         }
-    }
 
-    fun listModels(): List<FireBoxModelInfo>? {
-        return try {
+    fun listModels(): List<FireBoxModelInfo>? =
+        try {
             fireBoxService?.listVirtualModels()?.map { it.toClient() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list models", e)
             null
         }
-    }
 
     fun chatCompletion(req: FireBoxChatRequest): FireBoxChatResult {
         val service = fireBoxService ?: throw IllegalStateException("FireBox service is not connected")
@@ -197,6 +197,41 @@ class FireBoxClient private constructor(private val context: Context) {
             throw IllegalStateException("FireBox embedding transport failed", e)
         }
     }
+
+    fun <I, O> callFunction(
+        spec: FireBoxFunctionSpec<I, O>,
+        input: I,
+    ): FireBoxFunctionResult<O> {
+        val service = fireBoxService ?: throw IllegalStateException("FireBox service is not connected")
+        return try {
+            service.callFunction(spec.toCore(input)).toClient(spec.outputSerializer)
+        } catch (e: RemoteException) {
+            Log.e(TAG, "Failed to call function", e)
+            throw IllegalStateException("FireBox function call transport failed", e)
+        }
+    }
+
+    inline fun <reified I, reified O> callFunction(
+        virtualModelId: String,
+        name: String,
+        description: String,
+        input: I,
+        temperature: Float = 0f,
+        maxOutputTokens: Int = -1,
+    ): FireBoxFunctionResult<O> =
+        callFunction(
+            spec =
+                FireBoxFunctionSpec(
+                    virtualModelId = virtualModelId,
+                    name = name,
+                    description = description,
+                    inputSerializer = serializer<I>(),
+                    outputSerializer = serializer<O>(),
+                    temperature = temperature,
+                    maxOutputTokens = maxOutputTokens,
+                ),
+            input = input,
+        )
 
     fun streamChat(req: FireBoxChatRequest): Flow<FireBoxStreamEvent> =
         callbackFlow {

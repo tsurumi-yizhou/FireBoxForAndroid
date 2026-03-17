@@ -1,5 +1,6 @@
 package com.firebox.client.internal
 
+import com.firebox.client.model.FireBoxFunctionSpec
 import com.firebox.client.model.FireBoxSdkError
 import com.firebox.core.ChatCompletionResponse
 import com.firebox.core.ChatCompletionResult
@@ -8,11 +9,17 @@ import com.firebox.core.Embedding
 import com.firebox.core.EmbeddingResponse
 import com.firebox.core.EmbeddingResult
 import com.firebox.core.FireBoxError
+import com.firebox.core.FunctionCallResponse
+import com.firebox.core.FunctionCallResult
 import com.firebox.core.ProviderSelection
 import com.firebox.core.Usage
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.Serializable
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoreMappersTest {
@@ -81,4 +88,73 @@ class CoreMappersTest {
         assertEquals("stop", mapped.response?.finishReason)
         assertEquals(10L, mapped.response?.usage?.totalTokens)
     }
+
+    @Test
+    fun functionSpec_toCoreGeneratesStrictSchemas() {
+        val spec =
+            FireBoxFunctionSpec(
+                virtualModelId = "chat-default",
+                name = "extract_user",
+                description = "Extract a user profile.",
+                inputSerializer = FunctionInput.serializer(),
+                outputSerializer = FunctionOutput.serializer(),
+            )
+
+        val request = spec.toCore(FunctionInput(prompt = "hello"))
+
+        assertEquals("chat-default", request.virtualModelId)
+        assertTrue(request.inputJson.contains("\"prompt\":\"hello\""))
+        assertTrue(request.inputSchemaJson.contains("\"additionalProperties\":false"))
+        assertTrue(request.outputSchemaJson.contains("\"required\":[\"name\",\"age\"]"))
+        assertFalse(request.outputSchemaJson.isBlank())
+    }
+
+    @Test
+    fun functionCallResult_mapsTypedResponseToClient() {
+        val result =
+            FunctionCallResult(
+                response =
+                    FunctionCallResponse(
+                        virtualModelId = "chat-default",
+                        outputJson = """{"name":"Ada","age":12}""",
+                        selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
+                        usage = Usage(11, 22, 33),
+                        finishReason = "stop",
+                    ),
+                error = null,
+            )
+
+        val mapped = result.toClient(FunctionOutput.serializer())
+
+        assertNull(mapped.error)
+        assertEquals("Ada", mapped.response?.output?.name)
+        assertEquals(12, mapped.response?.output?.age)
+        assertEquals("""{"name":"Ada","age":12}""", mapped.response?.rawJson)
+    }
+
+    @Test(expected = SerializationException::class)
+    fun functionCallResult_throwsWhenTypedDecodeFails() {
+        FunctionCallResult(
+            response =
+                FunctionCallResponse(
+                    virtualModelId = "chat-default",
+                    outputJson = """{"name":"Ada","age":"bad"}""",
+                    selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
+                    usage = Usage(1, 1, 2),
+                    finishReason = "stop",
+                ),
+            error = null,
+        ).toClient(FunctionOutput.serializer())
+    }
+
+    @Serializable
+    private data class FunctionInput(
+        val prompt: String,
+    )
+
+    @Serializable
+    private data class FunctionOutput(
+        val name: String,
+        val age: Int,
+    )
 }

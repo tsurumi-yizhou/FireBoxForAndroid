@@ -7,6 +7,7 @@ import com.firebox.core.ChatMessage
 import com.firebox.core.Embedding
 import com.firebox.core.EmbeddingRequest
 import com.firebox.core.FireBoxError
+import com.firebox.core.FunctionCallRequest
 import com.firebox.core.Usage
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -93,6 +94,23 @@ internal class FireBoxProviderGateway {
                 ProviderType.Anthropic -> throw serviceException(
                     code = FireBoxError.INTERNAL,
                     message = "Anthropic 当前不支持 embedding",
+                    provider = provider,
+                    modelId = modelId,
+                )
+            }
+        }
+
+    suspend fun callFunction(
+        provider: ProviderConfig,
+        modelId: String,
+        request: FunctionCallRequest,
+    ): ProviderFunctionResult =
+        withContext(Dispatchers.IO) {
+            when (provider.type) {
+                ProviderType.OpenAI -> openAiFunctionCall(provider, modelId, request)
+                ProviderType.Anthropic, ProviderType.Gemini -> throw serviceException(
+                    code = FireBoxError.NO_CANDIDATE,
+                    message = "${provider.type.displayName} 当前不支持结构化函数调用",
                     provider = provider,
                     modelId = modelId,
                 )
@@ -195,7 +213,7 @@ internal class FireBoxProviderGateway {
                     return@readServerSentEvents
                 }
                 val root = parseJsonObject(data, provider, modelId)
-                root["usage"]?.jsonObject?.let { usage = it.usage() }
+                root["usage"]?.let { it as? JsonObject }?.let { usage = it.usage() }
                 val choice = root.array("choices").firstObjectOrNull() ?: return@readServerSentEvents
                 val delta = choice.objectOrNull("delta")?.string("content").orEmpty()
                 if (delta.isNotEmpty()) {
@@ -458,6 +476,48 @@ internal class FireBoxProviderGateway {
         }
     }
 
+    private fun openAiFunctionCall(
+        provider: ProviderConfig,
+        modelId: String,
+        request: FunctionCallRequest,
+    ): ProviderFunctionResult {
+        val baseUrl = ProviderBaseUrlNormalizer.providerBaseUrlPrefix(provider.type, provider.baseUrl)
+        val body = buildOpenAiFunctionCallBody(provider, modelId, request)
+
+        val response = postJson(
+            client = requestClient,
+            url = "${baseUrl.trimEnd('/')}/chat/completions",
+            body = body,
+            headers = mapOf("Authorization" to "Bearer ${provider.apiKey.trim()}"),
+            provider = provider,
+            modelId = modelId,
+        )
+
+        val root = parseJsonObject(response, provider, modelId)
+        val choice = root.array("choices").firstObjectOrNull()
+            ?: throw providerPayloadException(provider, modelId, "OpenAI 返回缺少 choices")
+        val message = choice.objectOrNull("message")
+            ?: throw providerPayloadException(provider, modelId, "OpenAI 返回缺少 message")
+        val refusal = message.string("refusal").orEmpty()
+        if (refusal.isNotBlank()) {
+            throw serviceException(FireBoxError.PROVIDER_ERROR, refusal, provider, modelId)
+        }
+        val rawOutput = extractOpenAiMessageText(choice)
+        if (rawOutput.isBlank()) {
+            throw providerPayloadException(provider, modelId, "OpenAI 返回缺少结构化 JSON")
+        }
+        val normalizedOutput =
+            json.encodeToString(
+                JsonElement.serializer(),
+                parseJsonElement(rawOutput, provider, modelId),
+            )
+        return ProviderFunctionResult(
+            outputJson = normalizedOutput,
+            usage = root.usage(),
+            finishReason = choice.string("finish_reason").orEmpty(),
+        )
+    }
+
     private fun geminiChatBody(request: ChatCompletionRequest): JsonObject {
         val systemText = request.messages.filter { it.role == "system" }.joinToString("\n\n") { it.content }
         val conversation = request.messages.filter { it.role != "system" }
@@ -614,6 +674,15 @@ internal class FireBoxProviderGateway {
             throw providerPayloadException(provider, modelId, "响应不是有效 JSON")
         }
 
+    private fun parseJsonElement(
+        raw: String,
+        provider: ProviderConfig,
+        modelId: String,
+    ): JsonElement =
+        runCatching { json.parseToJsonElement(raw) }.getOrElse {
+            throw providerPayloadException(provider, modelId, "响应不是有效 JSON")
+        }
+
     private fun extractOpenAiMessageText(choice: JsonObject): String {
         val message = choice.objectOrNull("message") ?: return ""
         return when (val content = message["content"]) {
@@ -654,7 +723,7 @@ internal class FireBoxProviderGateway {
 
     private fun JsonObject.array(name: String): JsonArray = this[name]?.jsonArray ?: JsonArray(emptyList())
 
-    private fun JsonObject.objectOrNull(name: String): JsonObject? = this[name]?.jsonObject
+    private fun JsonObject.objectOrNull(name: String): JsonObject? = this[name] as? JsonObject
 
     private fun JsonObject.string(name: String): String? = this[name]?.jsonPrimitive?.contentOrNull
 
@@ -662,7 +731,7 @@ internal class FireBoxProviderGateway {
 
     private fun JsonObject.int(name: String): Int? = this[name]?.jsonPrimitive?.intOrNull
 
-    private fun JsonArray.firstObjectOrNull(): JsonObject? = firstOrNull()?.jsonObject
+    private fun JsonArray.firstObjectOrNull(): JsonObject? = firstOrNull() as? JsonObject
 
     private fun JsonArray.toFloatArray(): FloatArray =
         FloatArray(size) { index -> this[index].jsonPrimitive.floatOrNull ?: 0f }
@@ -707,6 +776,74 @@ internal class FireBoxProviderGateway {
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
 
     private fun encodePathSegment(value: String): String = encode(value).replace("+", "%20")
+
+    private fun buildFunctionCallPrompt(request: FunctionCallRequest): String =
+        buildString {
+            appendLine("Function name: ${request.functionName}")
+            appendLine()
+            appendLine("Function description:")
+            appendLine(request.functionDescription.ifBlank { "No additional description provided." })
+            appendLine()
+            appendLine("Input schema:")
+            appendLine(request.inputSchemaJson)
+            appendLine()
+            appendLine("Input JSON:")
+            appendLine(request.inputJson)
+            appendLine()
+            append("Return only JSON that matches the response schema exactly.")
+        }
+
+    private fun sanitizeSchemaName(value: String): String {
+        val sanitized = value.map { ch -> if (ch.isLetterOrDigit() || ch == '_' || ch == '-') ch else '_' }.joinToString("")
+        return sanitized.take(64).ifBlank { "firebox_function" }
+    }
+
+    internal fun buildOpenAiFunctionCallBody(
+        provider: ProviderConfig,
+        modelId: String,
+        request: FunctionCallRequest,
+    ): JsonObject {
+        val outputSchema = parseJsonObject(request.outputSchemaJson, provider, modelId)
+        return buildJsonObject {
+            put("model", modelId)
+            putJsonArray("messages") {
+                add(
+                    buildJsonObject {
+                        put("role", "system")
+                        put(
+                            "content",
+                            "You implement the function ${request.functionName}. " +
+                                "Return only valid JSON that matches the response schema. " +
+                                "Do not wrap the JSON in markdown.",
+                        )
+                    },
+                )
+                add(
+                    buildJsonObject {
+                        put("role", "user")
+                        put("content", buildFunctionCallPrompt(request))
+                    },
+                )
+            }
+            putJsonObject("response_format") {
+                put("type", "json_schema")
+                putJsonObject("json_schema") {
+                    put("name", sanitizeSchemaName(request.functionName))
+                    if (request.functionDescription.isNotBlank()) {
+                        put("description", request.functionDescription)
+                    }
+                    put("strict", true)
+                    put("schema", outputSchema)
+                }
+            }
+            if (request.temperature >= 0f) {
+                put("temperature", request.temperature)
+            }
+            if (request.maxOutputTokens > 0) {
+                put("max_tokens", request.maxOutputTokens)
+            }
+        }
+    }
 }
 
 internal data class ProviderChatResult(
@@ -718,6 +855,12 @@ internal data class ProviderChatResult(
 internal data class ProviderEmbeddingResult(
     val embeddings: List<Embedding>,
     val usage: Usage,
+)
+
+internal data class ProviderFunctionResult(
+    val outputJson: String,
+    val usage: Usage,
+    val finishReason: String,
 )
 
 internal class FireBoxServiceException(

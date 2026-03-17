@@ -19,6 +19,9 @@ import com.firebox.core.EmbeddingRequest
 import com.firebox.core.EmbeddingResult
 import com.firebox.core.EmbeddingResponse
 import com.firebox.core.FireBoxError
+import com.firebox.core.FunctionCallRequest
+import com.firebox.core.FunctionCallResult
+import com.firebox.core.FunctionCallResponse
 import com.firebox.core.IChatStreamCallback
 import com.firebox.core.IFireBoxService
 import com.firebox.core.IServiceCallback
@@ -221,6 +224,24 @@ class FireBoxService : Service() {
                     connectionStateHolder.onRequestMade(callingUid, packageName)
                     recordClientRequestAsync(packageName, callingUid)
                     val response = aiDispatcher.createEmbeddings(runtimeSnapshot.value, request)
+                    recordUsageAsync(response.usage, providerTypeFrom(response.selection), response.selection.modelId)
+                    response
+                }
+            }
+
+        override fun callFunction(req: FunctionCallRequest?): FunctionCallResult =
+            runBlocking(Dispatchers.IO) {
+                fireBoxSyncResultOf(
+                    success = { response -> FunctionCallResult(response = response, error = null) },
+                    failure = { error -> FunctionCallResult(response = null, error = error) },
+                ) {
+                    enforceBindPermission()
+                    val request = req ?: throw IllegalArgumentException("req 不能为空")
+                    val callingUid = Binder.getCallingUid()
+                    val packageName = resolvePackageName(callingUid)
+                    connectionStateHolder.onRequestMade(callingUid, packageName)
+                    recordClientRequestAsync(packageName, callingUid)
+                    val response = aiDispatcher.callFunction(runtimeSnapshot.value, request)
                     recordUsageAsync(response.usage, providerTypeFrom(response.selection), response.selection.modelId)
                     response
                 }

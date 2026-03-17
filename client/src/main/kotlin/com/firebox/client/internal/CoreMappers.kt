@@ -1,12 +1,15 @@
-﻿package com.firebox.client.internal
+package com.firebox.client.internal
 
 import com.firebox.client.model.FireBoxChatRequest
-import com.firebox.client.model.FireBoxChatResult
 import com.firebox.client.model.FireBoxChatResponse
+import com.firebox.client.model.FireBoxChatResult
 import com.firebox.client.model.FireBoxEmbedding
 import com.firebox.client.model.FireBoxEmbeddingRequest
-import com.firebox.client.model.FireBoxEmbeddingResult
 import com.firebox.client.model.FireBoxEmbeddingResponse
+import com.firebox.client.model.FireBoxEmbeddingResult
+import com.firebox.client.model.FireBoxFunctionResponse
+import com.firebox.client.model.FireBoxFunctionResult
+import com.firebox.client.model.FireBoxFunctionSpec
 import com.firebox.client.model.FireBoxMessage
 import com.firebox.client.model.FireBoxModelCandidateInfo
 import com.firebox.client.model.FireBoxModelInfo
@@ -15,19 +18,23 @@ import com.firebox.client.model.FireBoxSdkError
 import com.firebox.client.model.FireBoxStreamEvent
 import com.firebox.client.model.FireBoxUsage
 import com.firebox.core.ChatCompletionRequest
-import com.firebox.core.ChatCompletionResult
 import com.firebox.core.ChatCompletionResponse
+import com.firebox.core.ChatCompletionResult
 import com.firebox.core.ChatMessage
 import com.firebox.core.ChatStreamEvent as CoreChatStreamEvent
 import com.firebox.core.Embedding
 import com.firebox.core.EmbeddingRequest
-import com.firebox.core.EmbeddingResult
 import com.firebox.core.EmbeddingResponse
+import com.firebox.core.EmbeddingResult
 import com.firebox.core.FireBoxError
+import com.firebox.core.FunctionCallRequest
+import com.firebox.core.FunctionCallResponse
+import com.firebox.core.FunctionCallResult
 import com.firebox.core.ModelCandidateInfo
 import com.firebox.core.ProviderSelection
 import com.firebox.core.Usage
 import com.firebox.core.VirtualModelInfo
+import kotlinx.serialization.KSerializer
 
 internal fun FireBoxChatRequest.toCore(): ChatCompletionRequest =
     ChatCompletionRequest(
@@ -41,6 +48,18 @@ internal fun FireBoxEmbeddingRequest.toCore(): EmbeddingRequest =
     EmbeddingRequest(
         virtualModelId = virtualModelId,
         input = input,
+    )
+
+internal fun <I, O> FireBoxFunctionSpec<I, O>.toCore(input: I): FunctionCallRequest =
+    FunctionCallRequest(
+        virtualModelId = virtualModelId,
+        functionName = name,
+        functionDescription = description,
+        inputJson = FunctionSchemaSupport.encode(input, inputSerializer),
+        inputSchemaJson = FunctionSchemaSupport.schema(inputSerializer),
+        outputSchemaJson = FunctionSchemaSupport.schema(outputSerializer),
+        temperature = temperature,
+        maxOutputTokens = maxOutputTokens,
     )
 
 private fun FireBoxMessage.toCore(): ChatMessage =
@@ -97,6 +116,12 @@ internal fun EmbeddingResult.toClient(): FireBoxEmbeddingResult =
         error = error?.toClient(),
     )
 
+internal fun <O> FunctionCallResult.toClient(outputSerializer: KSerializer<O>): FireBoxFunctionResult<O> =
+    FireBoxFunctionResult(
+        response = response?.toClient(outputSerializer),
+        error = error?.toClient(),
+    )
+
 internal fun CoreChatStreamEvent.toClient(): FireBoxStreamEvent =
     FireBoxStreamEvent(
         requestId = requestId,
@@ -120,6 +145,16 @@ private fun ProviderSelection.toClient(): FireBoxProviderSelection =
         providerType = providerType,
         providerName = providerName,
         modelId = modelId,
+    )
+
+private fun <O> FunctionCallResponse.toClient(outputSerializer: KSerializer<O>): FireBoxFunctionResponse<O> =
+    FireBoxFunctionResponse(
+        virtualModelId = virtualModelId,
+        output = FunctionSchemaSupport.decode(outputJson, outputSerializer),
+        rawJson = outputJson,
+        selection = selection.toClient(),
+        usage = usage.toClient(),
+        finishReason = finishReason,
     )
 
 private fun Usage.toClient(): FireBoxUsage =

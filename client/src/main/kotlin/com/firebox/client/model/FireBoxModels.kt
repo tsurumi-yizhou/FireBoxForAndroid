@@ -1,4 +1,6 @@
-﻿package com.firebox.client.model
+package com.firebox.client.model
+
+import kotlinx.serialization.KSerializer
 
 data class FireBoxMessage(
     val role: String,
@@ -131,5 +133,35 @@ data class FireBoxStreamEvent(
         COMPLETED,
         ERROR,
         CANCELLED,
+    }
+}
+
+data class FireBoxFunctionSpec<I, O>(
+    val virtualModelId: String,
+    val name: String,
+    val description: String,
+    val inputSerializer: KSerializer<I>,
+    val outputSerializer: KSerializer<O>,
+    val temperature: Float = 0f,
+    val maxOutputTokens: Int = -1,
+)
+
+data class FireBoxFunctionResponse<O>(
+    val virtualModelId: String,
+    val output: O,
+    val rawJson: String,
+    val selection: FireBoxProviderSelection,
+    val usage: FireBoxUsage,
+    val finishReason: String,
+)
+
+data class FireBoxFunctionResult<O>(
+    val response: FireBoxFunctionResponse<O>?,
+    val error: FireBoxSdkError?,
+) {
+    init {
+        require((response == null) != (error == null)) {
+            "Exactly one of response or error must be non-null"
+        }
     }
 }

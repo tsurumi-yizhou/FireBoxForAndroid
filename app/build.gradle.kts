@@ -103,7 +103,7 @@ dependencies {
     // Third-party SDKs (AI providers)
     implementation("com.openai:openai-java:4.28.0")
     implementation("com.anthropic:anthropic-java:2.16.1")
-    implementation("com.google.genai:google-genai:1.42.0")
+    implementation("com.google.genai:google-genai:1.43.0")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")

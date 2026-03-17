@@ -1,0 +1,131 @@
+﻿<resources>
+    <string name="app_name">FireBox</string>
+    <string name="permission_bind_firebox_service_desc">Allow trusted apps to access AI features provided by FireBox.
+    </string>
+
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_connections">Connections</string>
+    <string name="nav_configurations">Configurations</string>
+    <string name="nav_allowlist">Allowlist</string>
+
+    <string name="screen_dashboard">Dashboard</string>
+    <string name="screen_connections">Connections</string>
+    <string name="screen_configurations">Configurations</string>
+    <string name="screen_allowlist">Allowlist</string>
+    <string name="screen_model_list">Model List</string>
+
+    <string name="common_placeholder_dash">—</string>
+    <string name="common_provider">Provider</string>
+    <string name="common_model">Model</string>
+    <string name="common_select_provider">Select a provider</string>
+    <string name="common_select_model">Select a model</string>
+    <string name="common_clear">Clear</string>
+    <string name="common_refresh">Refresh</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_back">Back</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_add">Add</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_save">Save</string>
+    <string name="common_enabled">Enabled</string>
+    <string name="common_disabled">Disabled</string>
+
+    <string name="dashboard_requests_today">Requests (Today)</string>
+    <string name="dashboard_tokens_today">Tokens (Today)</string>
+    <string name="dashboard_price_today">Price (Today)</string>
+    <string name="dashboard_requests_month">Requests (Month)</string>
+    <string name="dashboard_tokens_month">Tokens (Month)</string>
+    <string name="dashboard_price_month">Price (Month)</string>
+    <string name="dashboard_price_value">$%1$.2f</string>
+
+    <string name="connections_total">Total</string>
+    <string name="connections_active">Active</string>
+    <string name="connections_warning">Warning</string>
+    <string name="connections_status_active">Active</string>
+    <string name="connections_status_warning">Warning</string>
+    <string name="connections_no_active">No active connections</string>
+    <string name="connections_package_time">%1$s · %2$s</string>
+    <string name="connections_requests_callbacks">Requests: %1$d · Callbacks: %2$d</string>
+    <string name="connections_streaming_now">Streaming now</string>
+    <string name="mock_app_assistant">Assistant</string>
+    <string name="mock_app_browser">Browser</string>
+    <string name="mock_app_email">Email</string>
+    <string name="mock_app_calendar">Calendar</string>
+    <string name="mock_app_notes">Notes</string>
+    <string name="mock_app_translator">Translator</string>
+    <string name="mock_app_weather">Weather</string>
+    <string name="mock_app_news">News Reader</string>
+    <string name="mock_minutes_ago">%1$d min ago</string>
+
+    <string name="allowlist_search_placeholder">Search apps</string>
+    <string name="allowlist_clear_search_cd">Clear search</string>
+    <string name="allowlist_empty">No FireBox client apps found yet</string>
+    <string name="allowlist_remove_cd">Remove</string>
+    <string name="allowlist_permission_managed_title">Client access overview</string>
+    <string name="allowlist_permission_managed_body">FireBox discovers client apps from the SDK declaration and keeps
+        historical connection records locally. Permission grants are still managed in system settings.
+    </string>
+    <string name="allowlist_open_app_settings">Open app settings</string>
+    <string name="allowlist_summary_declared">Declared</string>
+    <string name="allowlist_summary_granted">Granted</string>
+    <string name="allowlist_summary_history">History</string>
+    <string name="allowlist_status_declared">SDK declared</string>
+    <string name="allowlist_status_granted">Permission granted</string>
+    <string name="allowlist_status_not_granted">Permission not granted</string>
+    <string name="allowlist_status_history">History available</string>
+    <string name="allowlist_status_active">Active now</string>
+    <string name="allowlist_status_not_installed">Not currently installed</string>
+    <string name="allowlist_last_seen">Last seen %1$s</string>
+    <string name="allowlist_connection_request_stats">Connections: %1$d · Requests: %2$d</string>
+
+    <string name="config_tab_provider">Provider</string>
+    <string name="config_tab_route">Route</string>
+    <string name="config_add_provider">Add Provider</string>
+    <string name="config_unnamed_provider">Unnamed Provider</string>
+    <string name="config_delete_provider_cd">Delete provider</string>
+    <string name="config_name_label">Name</string>
+    <string name="config_base_url_label">Base URL</string>
+    <string name="config_api_key_label">API Key</string>
+    <string name="config_api_key_edit_placeholder">Leave blank to keep existing key</string>
+    <string name="config_manage_models">Manage Models</string>
+    <string name="config_provider_type_label">Provider Type</string>
+    <string name="config_create_provider_title">New Provider</string>
+    <string name="config_edit_provider_title">Edit Provider</string>
+    <string name="provider_bind_invalid_link">Invalid provider link</string>
+
+    <string name="route_add_rule">Add Route Rule</string>
+    <string name="route_virtual_model_rule">Virtual Model Rule</string>
+    <string name="route_delete_rule_cd">Delete rule</string>
+    <string name="route_match_model_id_label">Match Model ID (e.g. gpt-4)</string>
+    <string name="route_strategy_label">Route Strategy</string>
+    <string name="route_candidates_count">Candidate Targets (%1$d)</string>
+    <string name="route_add_target">Add Target</string>
+    <string name="route_no_target_models">No target models configured</string>
+    <string name="route_target_priority">Priority %1$d</string>
+    <string name="route_move_up_cd">Move up</string>
+    <string name="route_move_down_cd">Move down</string>
+    <string name="route_delete_target_cd">Delete target</string>
+    <string name="route_create_rule_title">New Route Rule</string>
+    <string name="route_edit_rule_title">Edit Route Rule</string>
+
+    <string name="provider_dropdown_label">Provider</string>
+    <string name="provider_dropdown_placeholder">Select a provider</string>
+    <string name="provider_disabled_format">%1$s (disabled)</string>
+    <string name="model_dropdown_label">Model</string>
+    <string name="model_dropdown_placeholder">Select a model</string>
+    <string name="model_dropdown_empty_placeholder">Enable models in the provider first</string>
+
+    <string name="model_title_fallback">Provider</string>
+    <string name="model_select_provider">Select a provider</string>
+    <string name="model_fetch_failed">Failed to fetch models</string>
+    <string name="model_http_404_hint">Check Base URL format. For OpenAI use https://api.xxx.com/v1, for Anthropic use
+        https://api.xxx.com/v1 or https://api.xxx.com/anthropic/v1, for Gemini use
+        https://generativelanguage.googleapis.com/v1beta.
+    </string>
+    <string name="model_auth_hint">Check whether the API Key is correct and still valid.</string>
+    <string name="model_network_hint">Check network connectivity and whether the Base URL is reachable.</string>
+    <string name="model_generic_hint">Check Base URL, API Key, or network, then try again.</string>
+    <string name="model_search_placeholder">Search models</string>
+    <string name="model_empty">No models found. Check Base URL / API Key.</string>
+</resources>

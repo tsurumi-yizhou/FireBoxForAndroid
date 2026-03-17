@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <permission
+            android:name="${applicationId}.permission.BIND_FIREBOX_SERVICE"
+            android:label="AI Capability"
+            android:description="@string/permission_bind_firebox_service_desc"
+            android:protectionLevel="dangerous"/>
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission
+            android:name="android.permission.QUERY_ALL_PACKAGES"
+            tools:ignore="QueryAllPackagesPermission"/>
+
+    <application
+            android:allowBackup="true"
+            android:label="@string/app_name"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:supportsRtl="true"
+            android:theme="@style/Theme.Design.NoActionBar"
+            android:fullBackupContent="@xml/backup_rules"
+            android:dataExtractionRules="@xml/data_extraction_rules">
+
+        <activity
+                android:name=".MainActivity"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                        android:scheme="firebox"
+                        android:host="provider"
+                        android:pathPrefix="/bind"/>
+            </intent-filter>
+        </activity>
+
+        <service
+                android:name=".FireBoxService"
+                android:exported="true"
+                android:permission="${applicationId}.permission.BIND_FIREBOX_SERVICE">
+            <intent-filter>
+                <action android:name="${applicationId}.action.BIND_FIREBOX_SERVICE"/>
+            </intent-filter>
+        </service>
+
+    </application>
+
+</manifest>

@@ -102,7 +102,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
 
     // Third-party SDKs (AI providers)
-    implementation("com.openai:openai-java:4.26.0")
+    implementation("com.openai:openai-java:4.28.0")
     implementation("com.anthropic:anthropic-java:2.16.1")
     implementation("com.google.genai:google-genai:1.42.0")
 

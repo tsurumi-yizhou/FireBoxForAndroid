@@ -1,0 +1,35 @@
+# Built outputs
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Local configuration
+local.properties
+
+# IDE - Android Studio / IntelliJ
+.idea/
+*.iml
+
+# Keystore
+*.jks
+*.keystore
+keystore
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kotlin
+.kotlin/
+
+.claude/

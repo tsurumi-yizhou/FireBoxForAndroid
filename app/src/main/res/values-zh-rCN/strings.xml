@@ -1,0 +1,121 @@
+<resources>
+    <string name="app_name">FireBox</string>
+    <string name="permission_bind_firebox_service_desc">允许受信任的应用访问 FireBox 提供的 AI 功能。</string>
+
+    <string name="nav_dashboard">概览</string>
+    <string name="nav_connections">连接</string>
+    <string name="nav_configurations">配置</string>
+    <string name="nav_allowlist">白名单</string>
+
+    <string name="screen_dashboard">概览</string>
+    <string name="screen_connections">连接</string>
+    <string name="screen_configurations">配置</string>
+    <string name="screen_allowlist">白名单</string>
+    <string name="screen_model_list">模型列表</string>
+
+    <string name="common_placeholder_dash">—</string>
+    <string name="common_provider">提供商</string>
+    <string name="common_model">模型</string>
+    <string name="common_select_provider">选择提供商</string>
+    <string name="common_select_model">选择模型</string>
+    <string name="common_clear">清除</string>
+    <string name="common_refresh">刷新</string>
+    <string name="common_retry">重试</string>
+    <string name="common_back">返回</string>
+    <string name="common_delete">删除</string>
+    <string name="common_add">添加</string>
+
+    <string name="dashboard_requests_today">请求数（今日）</string>
+    <string name="dashboard_tokens_today">Token 数（今日）</string>
+    <string name="dashboard_price_today">费用（今日）</string>
+    <string name="dashboard_requests_month">请求数（本月）</string>
+    <string name="dashboard_tokens_month">Token 数（本月）</string>
+    <string name="dashboard_price_month">费用（本月）</string>
+    <string name="dashboard_price_value">$%1$.2f</string>
+
+    <string name="connections_total">总计</string>
+    <string name="connections_active">活跃</string>
+    <string name="connections_warning">警告</string>
+    <string name="connections_status_active">活跃</string>
+    <string name="connections_status_warning">警告</string>
+    <string name="connections_no_active">无活跃连接</string>
+    <string name="connections_package_time">%1$s · %2$s</string>
+    <string name="connections_requests_callbacks">请求: %1$d · 回调: %2$d</string>
+    <string name="connections_streaming_now">正在流式传输</string>
+    <string name="mock_app_assistant">助手</string>
+    <string name="mock_app_browser">浏览器</string>
+    <string name="mock_app_email">邮件</string>
+    <string name="mock_app_calendar">日历</string>
+    <string name="mock_app_notes">笔记</string>
+    <string name="mock_app_translator">翻译</string>
+    <string name="mock_app_weather">天气</string>
+    <string name="mock_app_news">新闻阅读器</string>
+    <string name="mock_minutes_ago">%1$d 分钟前</string>
+
+    <string name="allowlist_search_placeholder">搜索应用</string>
+    <string name="allowlist_clear_search_cd">清除搜索</string>
+    <string name="allowlist_empty">尚未发现 FireBox 客户端应用</string>
+    <string name="allowlist_remove_cd">移除</string>
+    <string name="allowlist_permission_managed_title">客户端访问概览</string>
+    <string name="allowlist_permission_managed_body">FireBox 通过 SDK
+        声明发现客户端应用，并在本地保留历史连接记录。权限授予仍在系统设置中管理。
+    </string>
+    <string name="allowlist_open_app_settings">打开应用设置</string>
+    <string name="allowlist_summary_declared">已声明</string>
+    <string name="allowlist_summary_granted">已授权</string>
+    <string name="allowlist_summary_history">历史</string>
+    <string name="allowlist_status_declared">已声明 SDK</string>
+    <string name="allowlist_status_granted">已授权权限</string>
+    <string name="allowlist_status_not_granted">未授权权限</string>
+    <string name="allowlist_status_history">有历史记录</string>
+    <string name="allowlist_status_active">当前活跃</string>
+    <string name="allowlist_status_not_installed">当前未安装</string>
+    <string name="allowlist_last_seen">上次活跃 %1$s</string>
+    <string name="allowlist_connection_request_stats">连接: %1$d · 请求: %2$d</string>
+
+    <string name="config_tab_provider">提供商</string>
+    <string name="config_tab_route">路由</string>
+    <string name="config_add_provider">添加提供商</string>
+    <string name="config_unnamed_provider">未命名提供商</string>
+    <string name="config_delete_provider_cd">删除提供商</string>
+    <string name="config_name_label">名称</string>
+    <string name="config_base_url_label">基础 URL</string>
+    <string name="config_api_key_label">API 密钥</string>
+    <string name="config_api_key_edit_placeholder">留空则不修改密钥</string>
+    <string name="config_manage_models">管理模型</string>
+    <string name="config_provider_type_label">提供商类型</string>
+    <string name="provider_bind_invalid_link">无效的 Provider 绑定链接</string>
+
+    <string name="route_add_rule">添加路由规则</string>
+    <string name="route_virtual_model_rule">虚拟模型规则</string>
+    <string name="route_delete_rule_cd">删除规则</string>
+    <string name="route_match_model_id_label">匹配模型 ID（例如 gpt-4）</string>
+    <string name="route_strategy_label">路由策略</string>
+    <string name="route_candidates_count">候选目标 (%1$d)</string>
+    <string name="route_add_target">添加目标</string>
+    <string name="route_no_target_models">未配置目标模型</string>
+    <string name="route_target_priority">优先级 %1$d</string>
+    <string name="route_move_up_cd">上移</string>
+    <string name="route_move_down_cd">下移</string>
+    <string name="route_delete_target_cd">删除目标</string>
+
+    <string name="provider_dropdown_label">提供商</string>
+    <string name="provider_dropdown_placeholder">选择提供商</string>
+    <string name="provider_disabled_format">%1$s（已禁用）</string>
+    <string name="model_dropdown_label">模型</string>
+    <string name="model_dropdown_placeholder">选择模型</string>
+    <string name="model_dropdown_empty_placeholder">请先在提供商中启用模型</string>
+
+    <string name="model_title_fallback">提供商</string>
+    <string name="model_select_provider">选择提供商</string>
+    <string name="model_fetch_failed">获取模型失败</string>
+    <string name="model_http_404_hint">请检查 Base URL 格式。OpenAI 请使用 https://api.xxx.com/v1，Anthropic 请使用
+        https://api.xxx.com/v1 或 https://api.xxx.com/anthropic/v1，Gemini 请使用
+        https://generativelanguage.googleapis.com/v1beta。
+    </string>
+    <string name="model_auth_hint">请检查 API 密钥是否正确且仍然有效。</string>
+    <string name="model_network_hint">请检查网络连接，以及 Base URL 是否可访问。</string>
+    <string name="model_generic_hint">请检查 Base URL、API 密钥或网络后重试。</string>
+    <string name="model_search_placeholder">搜索模型</string>
+    <string name="model_empty">未找到模型。请检查基础 URL / API 密钥。</string>
+</resources>

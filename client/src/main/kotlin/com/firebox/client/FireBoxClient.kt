@@ -21,6 +21,7 @@ import com.firebox.core.ChatStreamEvent as CoreChatStreamEvent
 import com.firebox.core.IChatStreamCallback
 import com.firebox.core.IFireBoxService
 import com.firebox.core.IServiceCallback
+import com.firebox.core.ChatCompletionRequest as CoreChatCompletionRequest
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -152,11 +153,14 @@ class FireBoxClient private constructor(private val context: Context) {
 
     fun chatCompletion(req: FireBoxChatRequest): FireBoxChatResult {
         val service = fireBoxService ?: throw IllegalStateException("FireBox service is not connected")
+        val coreRequest = req.toCore()
         return try {
-            service.chatCompletion(req.toCore()).toClient()
+            service.chatCompletion(coreRequest).toClient()
         } catch (e: RemoteException) {
             Log.e(TAG, "Failed to run chat completion", e)
             throw IllegalStateException("FireBox chat completion transport failed", e)
+        } finally {
+            coreRequest.closeAttachmentsQuietly()
         }
     }
 
@@ -165,9 +169,10 @@ class FireBoxClient private constructor(private val context: Context) {
         listener: ChatStreamListener,
     ): Long? {
         val service = fireBoxService ?: return null
+        val coreRequest = req.toCore()
         return try {
             service.startChatCompletionStream(
-                req.toCore(),
+                coreRequest,
                 object : IChatStreamCallback.Stub() {
                     override fun onEvent(event: CoreChatStreamEvent?) {
                         event?.let { listener.onEvent(it.toClient()) }
@@ -177,6 +182,8 @@ class FireBoxClient private constructor(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start chat stream", e)
             null
+        } finally {
+            coreRequest.closeAttachmentsQuietly()
         }
     }
 
@@ -254,10 +261,15 @@ class FireBoxClient private constructor(private val context: Context) {
                             close()
                         }
                     }
-                }
+            }
 
             try {
-                requestId = service.startChatCompletionStream(req.toCore(), callback)
+                val coreRequest = req.toCore()
+                try {
+                    requestId = service.startChatCompletionStream(coreRequest, callback)
+                } finally {
+                    coreRequest.closeAttachmentsQuietly()
+                }
             } catch (e: Exception) {
                 close(e)
                 return@callbackFlow
@@ -308,5 +320,13 @@ class FireBoxClient private constructor(private val context: Context) {
 
     fun interface ChatStreamListener {
         fun onEvent(event: FireBoxStreamEvent)
+    }
+}
+
+private fun CoreChatCompletionRequest.closeAttachmentsQuietly() {
+    messages.forEach { message ->
+        message.attachments.forEach { attachment ->
+            runCatching { attachment.fileDescriptor.close() }
+        }
     }
 }

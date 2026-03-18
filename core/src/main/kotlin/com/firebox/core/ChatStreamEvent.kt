@@ -8,6 +8,7 @@ data class ChatStreamEvent(
     val requestId: Long,
     val type: Int,
     val deltaText: String?,
+    val reasoningText: String? = null,
     val selection: ProviderSelection?,
     val usage: Usage?,
     val response: ChatCompletionResponse?,
@@ -20,5 +21,6 @@ data class ChatStreamEvent(
         const val COMPLETED = 3
         const val ERROR = 4
         const val CANCELLED = 5
+        const val REASONING_DELTA = 6
     }
 }

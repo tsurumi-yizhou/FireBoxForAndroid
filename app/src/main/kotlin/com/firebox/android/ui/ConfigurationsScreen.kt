@@ -2,19 +2,18 @@ package com.firebox.android.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
@@ -29,12 +28,13 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import com.firebox.android.FireBoxGraph
 import com.firebox.android.R
 import com.firebox.android.ai.ProviderBaseUrlNormalizer
@@ -44,6 +44,33 @@ import com.firebox.android.model.*
 import kotlinx.coroutines.launch
 
 private const val HttpsSchemePrefix = "https://"
+private const val SettingsKeyGeneral = "general"
+private const val SettingsKeyProviders = "providers"
+private const val SettingsKeyRoutes = "routes"
+private const val SettingsKeyAbout = "about"
+private const val SettingsKeyProviderPrefix = "provider:"
+private const val SettingsKeyProviderEdit = "provider-edit"
+private const val SettingsKeyRouteEdit = "route-edit"
+
+// M3 shape tokens — resolved at call-site via MaterialTheme.shapes
+// SettingsGroupShape  → extraLarge (28 dp)
+// SettingsFieldShape  → large      (16 dp)
+// SettingsActionShape → large      (16 dp)
+
+private fun providerModelsSettingsKey(providerId: Int): String = "$SettingsKeyProviderPrefix$providerId"
+
+private fun providerIdFromSettingsKey(key: String?): Int? =
+    key
+        ?.takeIf { it.startsWith(SettingsKeyProviderPrefix) }
+        ?.removePrefix(SettingsKeyProviderPrefix)
+        ?.toIntOrNull()
+
+private fun rootSettingsKey(key: String?): String? =
+    when {
+        key == null -> null
+        key.startsWith(SettingsKeyProviderPrefix) -> SettingsKeyProviders
+        else -> key
+    }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3AdaptiveApi::class)
 @Composable
@@ -57,24 +84,28 @@ fun ConfigurationsScreen(
 
     val providers by repo.providers.collectAsState(initial = emptyList())
     val routes by repo.routes.collectAsState(initial = emptyList())
+    val quickToolModel by repo.quickToolModel.collectAsState(initial = QuickToolModelConfig())
 
-    var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
     var editingProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var editingRoute by remember { mutableStateOf<RouteRule?>(null) }
-    val navigator = rememberListDetailPaneScaffoldNavigator<Int>(
+    val navigator = rememberListDetailPaneScaffoldNavigator<String>(
         scaffoldDirective =
             calculatePaneScaffoldDirectiveWithTwoPanesOnMediumWidth(
                 windowAdaptiveInfo = currentWindowAdaptiveInfo(),
             ).copy(defaultPanePreferredWidth = 400.dp),
     )
     val currentDestination = navigator.currentDestination
-    val selectedProviderId =
+    val selectedDetailKey =
         currentDestination
             ?.takeIf { it.pane == ListDetailPaneScaffoldRole.Detail }
             ?.contentKey
+    val selectedRootKey = rootSettingsKey(selectedDetailKey)
+    val selectedProviderId = providerIdFromSettingsKey(selectedDetailKey)
     val selectedProvider = providers.firstOrNull { it.id == selectedProviderId }
+    val isNewProviderDraft = editingProvider?.let { draft -> providers.none { it.id == draft.id } } == true
+    val isNewRouteDraft = editingRoute?.let { draft -> routes.none { it.id == draft.id } } == true
     val isSinglePane = navigator.scaffoldDirective.maxHorizontalPartitions <= 1
-    val showDetailAsScreen = isSinglePane && selectedProviderId != null
+    val showDetailAsScreen = isSinglePane && selectedDetailKey != null
 
     BackHandler(enabled = showDetailAsScreen) {
         coroutineScope.launch {
@@ -82,21 +113,29 @@ fun ConfigurationsScreen(
         }
     }
 
-    LaunchedEffect(selectedTabIndex) {
-        if (selectedTabIndex != 0 && selectedProviderId != null) {
+    LaunchedEffect(isSinglePane, selectedDetailKey) {
+        if (!isSinglePane && selectedDetailKey == null) {
+            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyGeneral)
+        }
+    }
+
+    LaunchedEffect(selectedDetailKey, selectedProvider) {
+        if (selectedProviderId != null && selectedProvider == null) {
             navigator.navigateBack(BackNavigationBehavior.PopLatest)
         }
     }
 
-    LaunchedEffect(selectedProviderId, selectedProvider) {
-        if (selectedProviderId != null && selectedProvider == null) {
+    LaunchedEffect(selectedDetailKey, editingProvider, editingRoute) {
+        val missingTransientDestination =
+            (selectedDetailKey == SettingsKeyProviderEdit && editingProvider == null) ||
+                (selectedDetailKey == SettingsKeyRouteEdit && editingRoute == null)
+        if (missingTransientDestination) {
             navigator.navigateBack(BackNavigationBehavior.PopLatest)
         }
     }
 
     LaunchedEffect(providerBindRequest?.requestId) {
         val request = providerBindRequest ?: return@LaunchedEffect
-        selectedTabIndex = 0
         val nextId = repo.nextProviderId()
         editingProvider =
             ProviderConfig(
@@ -107,15 +146,24 @@ fun ConfigurationsScreen(
                 enabled = true,
                 apiKey = request.payload.apiKey,
             )
+        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyProviderEdit)
         onProviderBindRequestConsumed()
     }
 
     AppScreenScaffold(
         title =
-            if (showDetailAsScreen) {
-                selectedProvider?.name ?: stringResource(R.string.screen_model_list)
-            } else {
-                stringResource(R.string.screen_configurations)
+            when {
+                !showDetailAsScreen -> stringResource(R.string.screen_configurations)
+                selectedDetailKey == SettingsKeyProviderEdit ->
+                    stringResource(if (isNewProviderDraft) R.string.config_create_provider_title else R.string.config_edit_provider_title)
+                selectedDetailKey == SettingsKeyRouteEdit ->
+                    stringResource(if (isNewRouteDraft) R.string.route_create_rule_title else R.string.route_edit_rule_title)
+                selectedProvider != null -> selectedProvider.name.ifBlank { stringResource(R.string.model_title_fallback) }
+                selectedDetailKey == SettingsKeyGeneral -> stringResource(R.string.config_section_general)
+                selectedDetailKey == SettingsKeyProviders -> stringResource(R.string.config_section_provider)
+                selectedDetailKey == SettingsKeyRoutes -> stringResource(R.string.config_section_route)
+                selectedDetailKey == SettingsKeyAbout -> stringResource(R.string.config_section_about)
+                else -> stringResource(R.string.screen_configurations)
             },
         navigationIcon =
             if (showDetailAsScreen) {
@@ -145,153 +193,370 @@ fun ConfigurationsScreen(
             listPane = {
                 AnimatedPane(modifier = Modifier.preferredWidth(480.dp)) {
                     ConfigurationListPane(
-                        selectedTabIndex = selectedTabIndex,
-                        onTabSelected = { selectedTabIndex = it },
+                        selectedRootKey = selectedRootKey,
                         providers = providers,
                         routes = routes,
-                        onOpenProviderDetail = { providerId ->
+                        quickToolModel = quickToolModel,
+                        onOpenDestination = { destination ->
                             coroutineScope.launch {
-                                navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, providerId)
+                                if (selectedDetailKey != destination) {
+                                    navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, destination)
+                                }
                             }
                         },
-                        onAddProvider = {
-                            val nextId = (providers.maxOfOrNull { it.id } ?: 0) + 1
-                            editingProvider =
-                                ProviderConfig(
-                                    id = nextId,
-                                    type = ProviderType.OpenAI,
-                                    name = "Provider #$nextId",
-                                    baseUrl = "",
-                                    enabled = true,
-                                )
-                        },
-                        onEditProvider = { provider -> editingProvider = provider },
-                        onDeleteProvider = { providerId -> coroutineScope.launch { repo.deleteProvider(providerId) } },
-                        onAddRoute = {
-                            val nextId = (routes.maxOfOrNull { it.id } ?: 0) + 1
-                            editingRoute =
-                                RouteRule(
-                                    id = nextId,
-                                    virtualModelId = "",
-                                    strategy = RouteStrategy.Failover,
-                                    candidates = emptyList(),
-                                )
-                        },
-                        onEditRoute = { rule -> editingRoute = rule },
-                        onDeleteRoute = { ruleId -> coroutineScope.launch { repo.deleteRouteRule(ruleId) } },
                     )
                 }
             },
             detailPane = {
                 AnimatedPane {
-                    if (selectedTabIndex == 0 && selectedProvider != null) {
-                        ProviderModelsPane(
-                            provider = selectedProvider,
-                            onProviderChange = { updated -> coroutineScope.launch { repo.upsertProvider(updated) } },
-                            showHeader = !showDetailAsScreen,
+                    when {
+                        selectedDetailKey == SettingsKeyGeneral -> {
+                            GeneralSettingsPane(
+                                providers = providers,
+                                quickToolModel = quickToolModel,
+                                onQuickToolModelChange = { updated ->
+                                    coroutineScope.launch { repo.upsertQuickToolModel(updated) }
+                                },
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        selectedDetailKey == SettingsKeyProviders -> {
+                            ProviderSettingsPane(
+                                providers = providers,
+                                onAdd = {
+                                    val nextId = (providers.maxOfOrNull { it.id } ?: 0) + 1
+                                    editingProvider =
+                                        ProviderConfig(
+                                            id = nextId,
+                                            type = ProviderType.OpenAI,
+                                            name = "Provider #$nextId",
+                                            baseUrl = "",
+                                            enabled = true,
+                                        )
+                                    coroutineScope.launch {
+                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyProviderEdit)
+                                    }
+                                },
+                                onEdit = { provider ->
+                                    editingProvider = provider
+                                    coroutineScope.launch {
+                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyProviderEdit)
+                                    }
+                                },
+                                onDelete = { providerId -> coroutineScope.launch { repo.deleteProvider(providerId) } },
+                                onManageModels = { providerId ->
+                                    coroutineScope.launch {
+                                        navigator.navigateTo(
+                                            ListDetailPaneScaffoldRole.Detail,
+                                            providerModelsSettingsKey(providerId),
+                                        )
+                                    }
+                                },
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        selectedDetailKey == SettingsKeyRoutes -> {
+                            RouteSettingsPane(
+                                routes = routes,
+                                onAdd = {
+                                    val nextId = (routes.maxOfOrNull { it.id } ?: 0) + 1
+                                    editingRoute =
+                                        RouteRule(
+                                            id = nextId,
+                                            virtualModelId = "",
+                                            strategy = RouteStrategy.Failover,
+                                            candidates = emptyList(),
+                                        )
+                                    coroutineScope.launch {
+                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyRouteEdit)
+                                    }
+                                },
+                                onEdit = { rule ->
+                                    editingRoute = rule
+                                    coroutineScope.launch {
+                                        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyRouteEdit)
+                                    }
+                                },
+                                onDelete = { ruleId -> coroutineScope.launch { repo.deleteRouteRule(ruleId) } },
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        selectedDetailKey == SettingsKeyAbout -> {
+                            AboutSettingsPane(
+                                providerCount = providers.size,
+                                routeCount = routes.size,
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        selectedProvider != null -> {
+                            ProviderModelsPane(
+                                provider = selectedProvider,
+                                onProviderChange = { updated -> coroutineScope.launch { repo.upsertProvider(updated) } },
+                                onBack = {
+                                    coroutineScope.launch {
+                                        navigator.navigateBack(BackNavigationBehavior.PopLatest)
+                                    }
+                                },
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        selectedDetailKey == SettingsKeyProviderEdit && editingProvider != null -> {
+                            ProviderEditorPane(
+                                provider = editingProvider!!,
+                                isNew = isNewProviderDraft,
+                                onDismiss = {
+                                    editingProvider = null
+                                    coroutineScope.launch {
+                                        navigator.navigateBack(BackNavigationBehavior.PopLatest)
+                                    }
+                                },
+                                onSave = { updated ->
+                                    coroutineScope.launch { repo.upsertProvider(updated) }
+                                    editingProvider = null
+                                    coroutineScope.launch {
+                                        navigator.navigateBack(BackNavigationBehavior.PopLatest)
+                                    }
+                                },
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        selectedDetailKey == SettingsKeyRouteEdit && editingRoute != null -> {
+                            RouteEditorPane(
+                                rule = editingRoute!!,
+                                providers = providers,
+                                isNew = isNewRouteDraft,
+                                onDismiss = {
+                                    editingRoute = null
+                                    coroutineScope.launch {
+                                        navigator.navigateBack(BackNavigationBehavior.PopLatest)
+                                    }
+                                },
+                                onSave = { updated ->
+                                    coroutineScope.launch { repo.upsertRouteRule(updated) }
+                                    editingRoute = null
+                                    coroutineScope.launch {
+                                        navigator.navigateBack(BackNavigationBehavior.PopLatest)
+                                    }
+                                },
+                                showHeader = !showDetailAsScreen,
+                            )
+                        }
+
+                        else -> {
+                        SettingsDetailPlaceholder(
+                            providerCount = providers.size,
+                            routeCount = routes.size,
                         )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize())
+                        }
                     }
                 }
             },
         )
-
-        editingProvider?.let { draft ->
-            ProviderEditorDialog(
-                provider = draft,
-                isNew = providers.none { it.id == draft.id },
-                onDismiss = { editingProvider = null },
-                onSave = { updated ->
-                    coroutineScope.launch { repo.upsertProvider(updated) }
-                    editingProvider = null
-                },
-            )
-        }
-
-        editingRoute?.let { draft ->
-            RouteEditorDialog(
-                rule = draft,
-                providers = providers,
-                isNew = routes.none { it.id == draft.id },
-                onDismiss = { editingRoute = null },
-                onSave = { updated ->
-                    coroutineScope.launch { repo.upsertRouteRule(updated) }
-                    editingRoute = null
-                },
-            )
-        }
     }
 }
 
 @Composable
-private fun ProviderSettings(
-    providers: List<ProviderConfig>,
-    onAdd: () -> Unit,
-    onEdit: (ProviderConfig) -> Unit,
-    onDelete: (Int) -> Unit,
-    onManageModels: (Int) -> Unit,
+private fun SettingsPaneHeader(
+    title: String,
+    summary: String,
+    modifier: Modifier = Modifier,
+    navigationIcon: (@Composable (() -> Unit))? = null,
 ) {
-    FilledTonalButton(
-        onClick = onAdd,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Icon(Icons.Default.Add, contentDescription = null)
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(stringResource(R.string.config_add_provider))
-    }
-
-    providers.forEach { provider ->
-        key(provider.id) {
-            ProviderSummaryCard(
-                provider = provider,
-                onEdit = { onEdit(provider) },
-                onDelete = { onDelete(provider.id) },
-                onManageModels = { onManageModels(provider.id) },
+        if (navigationIcon != null) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    navigationIcon()
+                }
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = title, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
 @Composable
-private fun ProviderSummaryCard(
+private fun SettingsGroupSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun SettingsPageSurface(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
+private fun SettingsPaneContent(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .widthIn(max = 980.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun SettingsFormActions(
+    onDismiss: () -> Unit,
+    onSave: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(
+            onClick = onDismiss,
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Text(stringResource(R.string.common_cancel))
+        }
+        Button(
+            onClick = onSave,
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Text(stringResource(R.string.common_save))
+        }
+    }
+}
+
+@Composable
+private fun SettingsLazyPage(
+    maxWidth: Dp = 960.dp,
+    headerTitle: String? = null,
+    headerSummary: String? = null,
+    content: LazyListScope.() -> Unit,
+) {
+    SettingsPageSurface {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .widthIn(max = maxWidth),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                if (headerTitle != null && headerSummary != null) {
+                    item {
+                        SettingsPaneHeader(
+                            title = headerTitle,
+                            summary = headerSummary,
+                        )
+                    }
+                }
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsIndexRow(
+    title: String,
+    summary: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val containerColor =
+        if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+    Surface(
+        color = containerColor,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        SettingsRowLayout(
+            title = title,
+            summary = summary,
+            leading = { SettingsIconBadge(icon = icon, emphasized = selected) },
+            trailing = {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onClick),
+        )
+    }
+}
+
+@Composable
+private fun ProviderListRow(
     provider: ProviderConfig,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onManageModels: () -> Unit,
 ) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.outlinedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = provider.name.ifBlank { stringResource(R.string.config_unnamed_provider) },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = provider.type.displayName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+    SettingsRowLayout(
+        title = provider.name.ifBlank { stringResource(R.string.config_unnamed_provider) },
+        summary =
+            "${provider.type.displayName} · ${
+                stringResource(
+                    R.string.config_provider_enabled_models_count,
+                    provider.enabledModels.size,
+                )
+            }\n${provider.baseUrl.ifBlank { stringResource(R.string.common_placeholder_dash) }}",
+        leading = { SettingsIconBadge(icon = Icons.Default.Cloud) },
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
                 }
                 IconButton(onClick = onDelete) {
                     Icon(
@@ -301,38 +566,170 @@ private fun ProviderSummaryCard(
                     )
                 }
             }
+        },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onManageModels),
+    )
+}
 
-            Text(
-                text = provider.baseUrl.ifBlank { stringResource(R.string.common_placeholder_dash) },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedButton(onClick = onEdit, shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.common_edit))
+@Composable
+private fun RouteListRow(
+    rule: RouteRule,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val capabilitySummary =
+        routeCapabilitySummary(
+            capabilities = rule.capabilities,
+            reasoningLabel = stringResource(R.string.route_capability_reasoning),
+            toolCallingLabel = stringResource(R.string.route_capability_tool_calling),
+            inputLabel = stringResource(R.string.route_multimodal_input_label),
+            outputLabel = stringResource(R.string.route_multimodal_output_label),
+            imageLabel = stringResource(R.string.route_media_format_image),
+            videoLabel = stringResource(R.string.route_media_format_video),
+            audioLabel = stringResource(R.string.route_media_format_audio),
+        )
+    val summary =
+        buildString {
+            append("${rule.strategy.displayName} · ${stringResource(R.string.route_candidates_count, rule.candidates.size)}")
+            if (capabilitySummary.isNotBlank()) {
+                append('\n')
+                append(capabilitySummary)
+            }
+        }
+    SettingsRowLayout(
+        title = rule.virtualModelId.ifBlank { stringResource(R.string.route_virtual_model_rule) },
+        summary = summary,
+        leading = { SettingsIconBadge(icon = Icons.Default.Route) },
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
                 }
-                OutlinedButton(onClick = onManageModels, shape = RoundedCornerShape(12.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.List, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.config_manage_models))
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.route_delete_rule_cd),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
+        },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onEdit),
+    )
+}
+
+@Composable
+private fun SettingsEmptyRow(text: String) {
+    SettingsRowLayout(
+        title = text,
+        summary = "",
+        leading = { SettingsIconBadge(icon = Icons.Default.Info) },
+    )
+}
+
+@Composable
+private fun AboutInfoRow(
+    title: String,
+    summary: String,
+    icon: ImageVector,
+) {
+    SettingsRowLayout(
+        title = title,
+        summary = summary,
+        leading = { SettingsIconBadge(icon = icon) },
+    )
+}
+
+@Composable
+private fun QuickToolModelSummaryRow(
+    title: String,
+    summary: String,
+) {
+    SettingsRowLayout(
+        title = title,
+        summary = summary,
+        leading = { SettingsIconBadge(icon = Icons.Default.Bolt, emphasized = true) },
+    )
+}
+
+@Composable
+private fun SettingsIconBadge(
+    icon: ImageVector,
+    emphasized: Boolean = false,
+) {
+    val containerColor =
+        if (emphasized) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        } else {
+            MaterialTheme.colorScheme.secondary.copy(alpha = 0.10f)
+        }
+    val iconTint =
+        if (emphasized) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = containerColor,
+    ) {
+        Box(
+            modifier = Modifier.size(40.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = iconTint)
         }
     }
 }
 
 @Composable
-private fun ProviderEditorDialog(
+private fun SettingsRowLayout(
+    title: String,
+    summary: String,
+    modifier: Modifier = Modifier,
+    leading: @Composable (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        modifier = modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leading != null) {
+            leading()
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(if (summary.isBlank()) 0.dp else 4.dp),
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            if (summary.isNotBlank()) {
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (trailing != null) {
+            trailing()
+        }
+    }
+}
+
+@Composable
+private fun ProviderEditorPane(
     provider: ProviderConfig,
     isNew: Boolean,
     onDismiss: () -> Unit,
     onSave: (ProviderConfig) -> Unit,
+    showHeader: Boolean,
 ) {
     var draft by remember(provider) {
         mutableStateOf(
@@ -343,107 +740,127 @@ private fun ProviderEditorDialog(
         )
     }
 
-    SettingsEditorDialog(
-        title = stringResource(if (isNew) R.string.config_create_provider_title else R.string.config_edit_provider_title),
-        onDismiss = onDismiss,
-        onConfirm = {
-            onSave(
-                draft.copy(
-                    baseUrl = normalizeBaseUrlDraft(draft.type, draft.baseUrl),
-                    apiKey = draft.apiKey,
-                ),
-            )
-        },
-    ) {
-        OutlinedTextField(
-            value = draft.name,
-            onValueChange = { draft = draft.copy(name = it) },
-            label = { Text(stringResource(R.string.config_name_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-        )
+    SettingsPageSurface {
+        SettingsPaneContent {
+            if (showHeader) {
+                SettingsPaneHeader(
+                    title = stringResource(if (isNew) R.string.config_create_provider_title else R.string.config_edit_provider_title),
+                    summary = stringResource(R.string.config_section_provider_summary),
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.common_back),
+                            )
+                        }
+                    },
+                )
+            }
 
-        ProviderTypeDropdown(
-            value = draft.type,
-            onValueChange = { draft = draft.copy(type = it) },
-        )
+            SettingsGroupSurface {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    OutlinedTextField(
+                        value = draft.name,
+                        onValueChange = { draft = draft.copy(name = it) },
+                        label = { Text(stringResource(R.string.config_name_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                    )
 
-        OutlinedTextField(
-            value = draft.baseUrl,
-            onValueChange = { draft = draft.copy(baseUrl = sanitizeBaseUrlEditorInput(it)) },
-            label = { Text(stringResource(R.string.config_base_url_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-        )
+                    ProviderTypeDropdown(
+                        value = draft.type,
+                        onValueChange = { draft = draft.copy(type = it) },
+                    )
 
-        OutlinedTextField(
-            value = draft.apiKey,
-            onValueChange = { draft = draft.copy(apiKey = it) },
-            label = { Text(stringResource(R.string.config_api_key_label)) },
-            placeholder = {
-                if (!isNew) {
-                    Text(stringResource(R.string.config_api_key_edit_placeholder))
+                    OutlinedTextField(
+                        value = draft.baseUrl,
+                        onValueChange = { draft = draft.copy(baseUrl = sanitizeBaseUrlEditorInput(it)) },
+                        label = { Text(stringResource(R.string.config_base_url_label)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                    )
+
+                    OutlinedTextField(
+                        value = draft.apiKey,
+                        onValueChange = { draft = draft.copy(apiKey = it) },
+                        label = { Text(stringResource(R.string.config_api_key_label)) },
+                        placeholder = {
+                            if (!isNew) {
+                                Text(stringResource(R.string.config_api_key_edit_placeholder))
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = PasswordVisualTransformation(),
+                        shape = MaterialTheme.shapes.large,
+                    )
                 }
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-            shape = RoundedCornerShape(12.dp),
-        )
+            }
+
+            SettingsFormActions(
+                onDismiss = onDismiss,
+                onSave = {
+                    onSave(
+                        draft.copy(
+                            baseUrl = normalizeBaseUrlDraft(draft.type, draft.baseUrl),
+                            apiKey = draft.apiKey,
+                        ),
+                    )
+                },
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsEditorDialog(
-    title: String,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit,
-    scrollState: ScrollState = rememberScrollState(),
-    content: @Composable ColumnScope.() -> Unit,
+private fun <T> SettingsDropdownField(
+    valueText: String,
+    label: String,
+    items: List<T>,
+    onSelect: (T) -> Unit,
+    itemText: (T) -> String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    placeholder: String? = null,
+    shape: Shape = MaterialTheme.shapes.large,
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = it },
+        modifier = modifier,
+    ) {
+        OutlinedTextField(
+            value = valueText,
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text(label) },
+            placeholder =
+                placeholder?.let { placeholderText ->
+                    { Text(placeholderText) }
+                },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 820.dp),
-            shape = RoundedCornerShape(24.dp),
-            tonalElevation = 6.dp,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(text = title, style = MaterialTheme.typography.headlineSmall)
-
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f, fill = false)
-                            .verticalScroll(scrollState),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    content = content,
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+            shape = shape,
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            items.forEach { item ->
+                DropdownMenuItem(
+                    text = { Text(itemText(item)) },
+                    onClick = {
+                        onSelect(item)
+                        expanded = false
+                    },
                 )
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.common_cancel))
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = onConfirm) {
-                        Text(stringResource(R.string.common_save))
-                    }
-                }
             }
         }
     }
@@ -454,358 +871,258 @@ private fun SettingsEditorDialog(
 private fun ProviderTypeDropdown(
     value: ProviderType,
     onValueChange: (ProviderType) -> Unit,
+    shape: Shape = MaterialTheme.shapes.large,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }, modifier = modifier) {
-        OutlinedTextField(
-            value = value.displayName,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.config_provider_type_label)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-            shape = RoundedCornerShape(12.dp),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            ProviderType.entries.forEach { type ->
-                DropdownMenuItem(
-                    text = { Text(type.displayName) },
-                    onClick = {
-                        onValueChange(type)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RouteSettings(
-    routes: List<RouteRule>,
-    onAdd: () -> Unit,
-    onEdit: (RouteRule) -> Unit,
-    onDelete: (Int) -> Unit,
-) {
-    FilledTonalButton(
-        onClick = onAdd,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Icon(Icons.Default.Add, contentDescription = null)
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(stringResource(R.string.route_add_rule))
-    }
-
-    routes.forEach { rule ->
-        key(rule.id) {
-            RouteSummaryCard(
-                rule = rule,
-                onEdit = { onEdit(rule) },
-                onDelete = { onDelete(rule.id) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun RouteSummaryCard(
-    rule: RouteRule,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    OutlinedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = rule.virtualModelId.ifBlank { stringResource(R.string.route_virtual_model_rule) },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = rule.strategy.displayName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.route_delete_rule_cd),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-
-            Text(
-                text = stringResource(R.string.route_candidates_count, rule.candidates.size),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            OutlinedButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.common_edit))
-            }
-        }
-    }
+    SettingsDropdownField(
+        valueText = value.displayName,
+        label = stringResource(R.string.config_provider_type_label),
+        items = ProviderType.entries,
+        onSelect = onValueChange,
+        itemText = { it.displayName },
+        modifier = modifier,
+        shape = shape,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RouteEditorDialog(
+private fun RouteEditorPane(
     rule: RouteRule,
     providers: List<ProviderConfig>,
     isNew: Boolean,
     onDismiss: () -> Unit,
     onSave: (RouteRule) -> Unit,
+    showHeader: Boolean,
 ) {
     var draft by remember(rule) { mutableStateOf(rule) }
-    val candidateListState = rememberLazyListState()
-    val dialogScrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
+    val availableProviders = availableProvidersForRoute(draft, providers)
 
-    SettingsEditorDialog(
-        title = stringResource(if (isNew) R.string.route_create_rule_title else R.string.route_edit_rule_title),
-        onDismiss = onDismiss,
-        onConfirm = { onSave(draft) },
-        scrollState = dialogScrollState,
-    ) {
-        OutlinedTextField(
-            value = draft.virtualModelId,
-            onValueChange = { draft = draft.copy(virtualModelId = it) },
-            label = { Text(stringResource(R.string.route_match_model_id_label)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-        )
-
-        RouteStrategyDropdown(
-            value = draft.strategy,
-            onValueChange = { draft = draft.copy(strategy = it) },
-        )
-
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-        val availableProviders = availableProvidersForRoute(draft, providers)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.route_candidates_count, draft.candidates.size),
-                style = MaterialTheme.typography.labelLarge,
-            )
-            FilledTonalButton(
-                onClick = {
-                    val firstProvider = availableProviders.firstOrNull()
-                    val newCandidates =
-                        draft.candidates +
-                                listOf(
-                                    ModelTarget(
-                                        providerId = firstProvider?.id ?: 0,
-                                        modelId = firstProvider?.enabledModels?.firstOrNull().orEmpty(),
-                                    ),
-                                )
-                    draft = draft.copy(candidates = newCandidates)
-                    coroutineScope.launch {
-                        dialogScrollState.animateScrollTo(dialogScrollState.maxValue)
-                        candidateListState.animateScrollToItem(newCandidates.lastIndex)
-                    }
-                },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(8.dp),
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(stringResource(R.string.route_add_target), style = MaterialTheme.typography.labelMedium)
+    SettingsPageSurface {
+        SettingsPaneContent {
+            if (showHeader) {
+                SettingsPaneHeader(
+                    title = stringResource(if (isNew) R.string.route_create_rule_title else R.string.route_edit_rule_title),
+                    summary = stringResource(R.string.config_section_route_summary),
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.common_back),
+                            )
+                        }
+                    },
+                )
             }
-        }
 
-        if (draft.candidates.isEmpty()) {
-            ListItem(
-                headlineContent = {
-                    Text(
-                        stringResource(R.string.route_no_target_models),
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            LazyColumn(
-                state = candidateListState,
-                modifier = Modifier.heightIn(max = 400.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                itemsIndexed(draft.candidates) { candidateIndex, target ->
-                    val fallbackProvider = availableProviders.firstOrNull()
-                    val resolvedProviderId =
-                        when {
-                            target.providerId != 0 && availableProviders.any { it.id == target.providerId } -> target.providerId
-                            target.provider != null -> availableProviders.firstOrNull { it.type == target.provider }?.id
-                                ?: fallbackProvider?.id ?: 0
-
-                            else -> fallbackProvider?.id ?: 0
-                        }
-                    val selectedProvider = providers.firstOrNull { it.id == resolvedProviderId }
-                    val enabledModelIds = selectedProvider?.enabledModels.orEmpty()
-                    val requestedModelId = target.modelId.ifBlank { target.model.orEmpty() }
-                    val resolvedModelId =
-                        when {
-                            requestedModelId in enabledModelIds -> requestedModelId
-                            enabledModelIds.isNotEmpty() -> enabledModelIds.first()
-                            else -> requestedModelId
-                        }
-
-                    Card(
+            SettingsGroupSurface {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    OutlinedTextField(
+                        value = draft.virtualModelId,
+                        onValueChange = { draft = draft.copy(virtualModelId = it) },
+                        label = { Text(stringResource(R.string.route_match_model_id_label)) },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.large,
+                    )
+
+                    RouteCapabilitiesSection(
+                        capabilities = draft.capabilities,
+                        onChange = { draft = draft.copy(capabilities = it) },
+                    )
+
+                    RouteStrategyDropdown(
+                        value = draft.strategy,
+                        onValueChange = { draft = draft.copy(strategy = it) },
+                    )
+                }
+            }
+
+            SettingsGroupSurface {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                SuggestionChip(
-                                    onClick = { },
-                                    label = {
-                                        Text(
-                                            stringResource(
-                                                R.string.route_target_priority,
-                                                candidateIndex + 1
-                                            )
-                                        )
-                                    },
+                        Text(
+                            text = stringResource(R.string.route_candidates_count, draft.candidates.size),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        FilledTonalButton(
+                            onClick = {
+                                val firstProvider = availableProviders.firstOrNull()
+                                draft = draft.copy(
+                                    candidates =
+                                        draft.candidates + listOf(
+                                            ModelTarget(
+                                                providerId = firstProvider?.id ?: 0,
+                                                modelId = firstProvider?.enabledModels?.firstOrNull().orEmpty(),
+                                            ),
+                                        ),
                                 )
-                                Row {
-                                    IconButton(
-                                        onClick = {
-                                            if (candidateIndex <= 0) return@IconButton
-                                            val updated = draft.candidates.toMutableList()
-                                            val temp = updated[candidateIndex - 1]
-                                            updated[candidateIndex - 1] = updated[candidateIndex]
-                                            updated[candidateIndex] = temp
-                                            draft = draft.copy(candidates = updated)
-                                        },
-                                        enabled = candidateIndex > 0,
-                                        modifier = Modifier.size(32.dp),
+                            },
+                            shape = MaterialTheme.shapes.large,
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.route_add_target))
+                        }
+                    }
+
+                    if (draft.candidates.isEmpty()) {
+                        SettingsEmptyRow(text = stringResource(R.string.route_no_target_models))
+                    } else {
+                        draft.candidates.forEachIndexed { candidateIndex, target ->
+                            val fallbackProvider = availableProviders.firstOrNull()
+                            val resolvedProviderId =
+                                when {
+                                    target.providerId != 0 && availableProviders.any { it.id == target.providerId } -> target.providerId
+                                    target.provider != null -> availableProviders.firstOrNull { it.type == target.provider }?.id
+                                        ?: fallbackProvider?.id ?: 0
+                                    else -> fallbackProvider?.id ?: 0
+                                }
+                            val selectedProvider = providers.firstOrNull { it.id == resolvedProviderId }
+                            val enabledModelIds = selectedProvider?.enabledModels.orEmpty()
+                            val requestedModelId = target.modelId.ifBlank { target.model.orEmpty() }
+                            val resolvedModelId =
+                                when {
+                                    requestedModelId in enabledModelIds -> requestedModelId
+                                    enabledModelIds.isNotEmpty() -> enabledModelIds.first()
+                                    else -> requestedModelId
+                                }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                shape = MaterialTheme.shapes.large,
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        Icon(
-                                            Icons.Default.KeyboardArrowUp,
-                                            contentDescription = stringResource(R.string.route_move_up_cd)
+                                        SuggestionChip(
+                                            onClick = { },
+                                            label = { Text(stringResource(R.string.route_target_priority, candidateIndex + 1)) },
                                         )
+                                        Row {
+                                            IconButton(
+                                                onClick = {
+                                                    if (candidateIndex <= 0) return@IconButton
+                                                    val updated = draft.candidates.toMutableList()
+                                                    val temp = updated[candidateIndex - 1]
+                                                    updated[candidateIndex - 1] = updated[candidateIndex]
+                                                    updated[candidateIndex] = temp
+                                                    draft = draft.copy(candidates = updated)
+                                                },
+                                                enabled = candidateIndex > 0,
+                                                modifier = Modifier.size(32.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.KeyboardArrowUp,
+                                                    contentDescription = stringResource(R.string.route_move_up_cd),
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    if (candidateIndex >= draft.candidates.lastIndex) return@IconButton
+                                                    val updated = draft.candidates.toMutableList()
+                                                    val temp = updated[candidateIndex + 1]
+                                                    updated[candidateIndex + 1] = updated[candidateIndex]
+                                                    updated[candidateIndex] = temp
+                                                    draft = draft.copy(candidates = updated)
+                                                },
+                                                enabled = candidateIndex < draft.candidates.lastIndex,
+                                                modifier = Modifier.size(32.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.KeyboardArrowDown,
+                                                    contentDescription = stringResource(R.string.route_move_down_cd),
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    draft = draft.copy(
+                                                        candidates = draft.candidates.toMutableList().also { it.removeAt(candidateIndex) },
+                                                    )
+                                                },
+                                                modifier = Modifier.size(32.dp),
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = stringResource(R.string.route_delete_target_cd),
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                )
+                                            }
+                                        }
                                     }
-                                    IconButton(
-                                        onClick = {
-                                            if (candidateIndex >= draft.candidates.lastIndex) return@IconButton
-                                            val updated = draft.candidates.toMutableList()
-                                            val temp = updated[candidateIndex + 1]
-                                            updated[candidateIndex + 1] = updated[candidateIndex]
-                                            updated[candidateIndex] = temp
-                                            draft = draft.copy(candidates = updated)
-                                        },
-                                        enabled = candidateIndex < draft.candidates.lastIndex,
-                                        modifier = Modifier.size(32.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Default.KeyboardArrowDown,
-                                            contentDescription = stringResource(R.string.route_move_down_cd)
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = {
+
+                                    ProviderInstanceDropdown(
+                                        providers = availableProviders,
+                                        selectedProviderId = resolvedProviderId,
+                                        onSelect = { newProviderId ->
+                                            val newProvider = providers.firstOrNull { it.id == newProviderId }
+                                            val providerEnabledModels = newProvider?.enabledModels.orEmpty()
+                                            val newModelId =
+                                                if (resolvedModelId in providerEnabledModels) {
+                                                    resolvedModelId
+                                                } else {
+                                                    providerEnabledModels.firstOrNull().orEmpty()
+                                                }
+                                            val updatedTarget =
+                                                target.copy(
+                                                    providerId = newProviderId,
+                                                    modelId = newModelId,
+                                                    provider = null,
+                                                    model = null,
+                                                )
                                             draft = draft.copy(
-                                                candidates = draft.candidates.toMutableList()
-                                                    .also { it.removeAt(candidateIndex) })
+                                                candidates = draft.candidates.toMutableList().also { it[candidateIndex] = updatedTarget },
+                                            )
                                         },
-                                        modifier = Modifier.size(32.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = stringResource(R.string.route_delete_target_cd),
-                                            tint = MaterialTheme.colorScheme.error,
-                                        )
-                                    }
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+
+                                    ModelIdDropdown(
+                                        modelIds = enabledModelIds,
+                                        selectedModelId = resolvedModelId,
+                                        onSelect = { newModelId ->
+                                            val updatedTarget =
+                                                target.copy(
+                                                    providerId = resolvedProviderId,
+                                                    modelId = newModelId,
+                                                    provider = null,
+                                                    model = null,
+                                                )
+                                            draft = draft.copy(
+                                                candidates = draft.candidates.toMutableList().also { it[candidateIndex] = updatedTarget },
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
                                 }
                             }
-
-                            ProviderInstanceDropdown(
-                                providers = availableProviders,
-                                selectedProviderId = resolvedProviderId,
-                                onSelect = { newProviderId ->
-                                    val newProvider = providers.firstOrNull { it.id == newProviderId }
-                                    val providerEnabledModels = newProvider?.enabledModels.orEmpty()
-                                    val newModelId =
-                                        if (resolvedModelId in providerEnabledModels) {
-                                            resolvedModelId
-                                        } else {
-                                            providerEnabledModels.firstOrNull().orEmpty()
-                                        }
-                                    val updatedTarget =
-                                        target.copy(
-                                            providerId = newProviderId,
-                                            modelId = newModelId,
-                                            provider = null,
-                                            model = null,
-                                        )
-                                    draft = draft.copy(
-                                        candidates = draft.candidates.toMutableList()
-                                            .also { it[candidateIndex] = updatedTarget })
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-
-                            ModelIdDropdown(
-                                modelIds = enabledModelIds,
-                                selectedModelId = resolvedModelId,
-                                onSelect = { newModelId ->
-                                    val updatedTarget =
-                                        target.copy(
-                                            providerId = resolvedProviderId,
-                                            modelId = newModelId,
-                                            provider = null,
-                                            model = null,
-                                        )
-                                    draft = draft.copy(
-                                        candidates = draft.candidates.toMutableList()
-                                            .also { it[candidateIndex] = updatedTarget })
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
                         }
                     }
                 }
             }
+
+            SettingsFormActions(
+                onDismiss = onDismiss,
+                onSave = { onSave(draft) },
+            )
         }
     }
 }
@@ -815,36 +1132,113 @@ private fun RouteEditorDialog(
 private fun RouteStrategyDropdown(
     value: RouteStrategy,
     onValueChange: (RouteStrategy) -> Unit,
+    shape: Shape = MaterialTheme.shapes.large,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
+    SettingsDropdownField(
+        valueText = value.displayName,
+        label = stringResource(R.string.route_strategy_label),
+        items = RouteStrategy.entries,
+        onSelect = onValueChange,
+        itemText = { it.displayName },
         modifier = modifier,
+        shape = shape,
+    )
+}
+
+@Composable
+private fun RouteCapabilitiesSection(
+    capabilities: RouteModelCapabilities,
+    onChange: (RouteModelCapabilities) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(
-            value = value.displayName,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(R.string.route_strategy_label)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-            shape = RoundedCornerShape(12.dp),
+        Text(
+            text = stringResource(R.string.route_capabilities_label),
+            style = MaterialTheme.typography.labelLarge,
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            RouteStrategy.entries.forEach { strategy ->
-                DropdownMenuItem(
-                    text = { Text(strategy.displayName) },
-                    onClick = {
-                        onValueChange(strategy)
-                        expanded = false
-                    },
-                )
-            }
+
+        CapabilityToggleRow(
+            label = stringResource(R.string.route_capability_reasoning),
+            checked = capabilities.reasoning,
+            onCheckedChange = { onChange(capabilities.copy(reasoning = it)) },
+        )
+        CapabilityToggleRow(
+            label = stringResource(R.string.route_capability_tool_calling),
+            checked = capabilities.toolCalling,
+            onCheckedChange = { onChange(capabilities.copy(toolCalling = it)) },
+        )
+
+        Text(
+            text = stringResource(R.string.route_multimodal_input_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        MediaFormatSelector(
+            selectedFormats = capabilities.inputFormats,
+            onToggle = { format ->
+                onChange(capabilities.copy(inputFormats = capabilities.inputFormats.toggle(format)))
+            },
+        )
+
+        Text(
+            text = stringResource(R.string.route_multimodal_output_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        MediaFormatSelector(
+            selectedFormats = capabilities.outputFormats,
+            onToggle = { format ->
+                onChange(capabilities.copy(outputFormats = capabilities.outputFormats.toggle(format)))
+            },
+        )
+    }
+}
+
+@Composable
+private fun CapabilityToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaFormatSelector(
+    selectedFormats: List<RouteMediaFormat>,
+    onToggle: (RouteMediaFormat) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RouteMediaFormat.entries.forEach { format ->
+            FilterChip(
+                selected = format in selectedFormats,
+                onClick = { onToggle(format) },
+                label = { Text(mediaFormatLabel(format)) },
+            )
         }
     }
 }
@@ -868,11 +1262,70 @@ private fun isEmbeddingRoute(rule: RouteRule): Boolean =
                         it.model.orEmpty().contains("embedding", ignoreCase = true)
             }
 
+@Composable
+private fun mediaFormatLabel(format: RouteMediaFormat): String =
+    when (format) {
+        RouteMediaFormat.Image -> stringResource(R.string.route_media_format_image)
+        RouteMediaFormat.Video -> stringResource(R.string.route_media_format_video)
+        RouteMediaFormat.Audio -> stringResource(R.string.route_media_format_audio)
+    }
+
+private fun routeCapabilitySummary(
+    capabilities: RouteModelCapabilities,
+    reasoningLabel: String,
+    toolCallingLabel: String,
+    inputLabel: String,
+    outputLabel: String,
+    imageLabel: String,
+    videoLabel: String,
+    audioLabel: String,
+): String {
+    val parts = mutableListOf<String>()
+    if (capabilities.reasoning) {
+        parts += reasoningLabel
+    }
+    if (capabilities.toolCalling) {
+        parts += toolCallingLabel
+    }
+    val inputFormats =
+        capabilities.inputFormats
+            .map { it.summaryLabel(imageLabel = imageLabel, videoLabel = videoLabel, audioLabel = audioLabel) }
+    if (inputFormats.isNotEmpty()) {
+        parts += "$inputLabel: ${inputFormats.joinToString()}"
+    }
+    val outputFormats =
+        capabilities.outputFormats
+            .map { it.summaryLabel(imageLabel = imageLabel, videoLabel = videoLabel, audioLabel = audioLabel) }
+    if (outputFormats.isNotEmpty()) {
+        parts += "$outputLabel: ${outputFormats.joinToString()}"
+    }
+    return parts.joinToString(" · ")
+}
+
+private fun RouteMediaFormat.summaryLabel(
+    imageLabel: String,
+    videoLabel: String,
+    audioLabel: String,
+): String =
+    when (this) {
+        RouteMediaFormat.Image -> imageLabel
+        RouteMediaFormat.Video -> videoLabel
+        RouteMediaFormat.Audio -> audioLabel
+    }
+
+private fun List<RouteMediaFormat>.toggle(format: RouteMediaFormat): List<RouteMediaFormat> =
+    if (format in this) {
+        filterNot { it == format }
+    } else {
+        this + format
+    }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProviderModelsPane(
     provider: ProviderConfig?,
     onProviderChange: (ProviderConfig) -> Unit,
+    onBack: (() -> Unit)? = null,
     showHeader: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -977,6 +1430,14 @@ private fun ProviderModelsPane(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.common_back),
+                            )
+                        }
+                    }
                     Text(
                         text = provider.name.ifBlank { stringResource(R.string.model_title_fallback) },
                         style = MaterialTheme.typography.titleLarge,
@@ -1056,7 +1517,7 @@ private fun ProviderModelsPane(
                                                     collapsedGroupNames + groupName
                                                 }
                                         },
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = MaterialTheme.shapes.medium,
                                     color = MaterialTheme.colorScheme.surfaceVariant,
                                 ) {
                                     Row(
@@ -1137,120 +1598,344 @@ private fun ProviderModelsPane(
 
 @Composable
 private fun ConfigurationListPane(
-    selectedTabIndex: Int,
-    onTabSelected: (Int) -> Unit,
+    selectedRootKey: String?,
     providers: List<ProviderConfig>,
     routes: List<RouteRule>,
-    onOpenProviderDetail: (Int) -> Unit,
-    onAddProvider: () -> Unit,
-    onEditProvider: (ProviderConfig) -> Unit,
-    onDeleteProvider: (Int) -> Unit,
-    onAddRoute: () -> Unit,
-    onEditRoute: (RouteRule) -> Unit,
-    onDeleteRoute: (Int) -> Unit,
+    quickToolModel: QuickToolModelConfig,
+    onOpenDestination: (String) -> Unit,
 ) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 960.dp)
-                    .padding(horizontal = 16.dp),
-        ) {
-            PrimaryTabRow(
-                selectedTabIndex = selectedTabIndex,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Tab(
-                    selected = selectedTabIndex == 0,
-                    onClick = { onTabSelected(0) },
-                    text = { Text(stringResource(R.string.config_tab_provider)) },
-                )
-                Tab(
-                    selected = selectedTabIndex == 1,
-                    onClick = { onTabSelected(1) },
-                    text = { Text(stringResource(R.string.config_tab_route)) },
-                )
+    val quickToolSummary =
+        remember(providers, quickToolModel) {
+            val provider = providers.firstOrNull { it.id == quickToolModel.providerId }
+            when {
+                provider != null && quickToolModel.modelId.isNotBlank() -> "${provider.name} · ${quickToolModel.modelId}"
+                else -> ""
             }
+        }
+    val context = LocalContext.current
+    val versionName =
+        remember(context.packageName) {
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull().orEmpty()
+        }
 
-            when (selectedTabIndex) {
-                0 ->
-                    ProviderTabContent(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        providers = providers,
-                        navigatorAction = onOpenProviderDetail,
-                        onEditProvider = onEditProvider,
-                        onDeleteProvider = onDeleteProvider,
-                        onAddProvider = onAddProvider,
-                    )
-
-                else ->
-                    RouteTabContent(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        routes = routes,
-                        onAddRoute = onAddRoute,
-                        onEditRoute = onEditRoute,
-                        onDeleteRoute = onDeleteRoute,
-                    )
+    SettingsLazyPage(maxWidth = 560.dp) {
+        item {
+            SettingsGroupSurface {
+                SettingsIndexRow(
+                    title = stringResource(R.string.config_section_general),
+                    summary = quickToolSummary.ifBlank { stringResource(R.string.config_section_general_summary) },
+                    icon = Icons.Default.Tune,
+                    selected = selectedRootKey == SettingsKeyGeneral,
+                    onClick = { onOpenDestination(SettingsKeyGeneral) },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SettingsIndexRow(
+                    title = stringResource(R.string.config_section_provider),
+                    summary = stringResource(R.string.config_about_provider_count_value, providers.size),
+                    icon = Icons.Default.Cloud,
+                    selected = selectedRootKey == SettingsKeyProviders,
+                    onClick = { onOpenDestination(SettingsKeyProviders) },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SettingsIndexRow(
+                    title = stringResource(R.string.config_section_route),
+                    summary = stringResource(R.string.config_about_route_count_value, routes.size),
+                    icon = Icons.Default.Route,
+                    selected = selectedRootKey == SettingsKeyRoutes,
+                    onClick = { onOpenDestination(SettingsKeyRoutes) },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SettingsIndexRow(
+                    title = stringResource(R.string.config_section_about),
+                    summary = versionName.ifBlank { stringResource(R.string.config_section_about_summary) },
+                    icon = Icons.Default.Info,
+                    selected = selectedRootKey == SettingsKeyAbout,
+                    onClick = { onOpenDestination(SettingsKeyAbout) },
+                )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-private fun ProviderTabContent(
-    modifier: Modifier = Modifier,
-    providers: List<ProviderConfig>,
-    navigatorAction: (Int) -> Unit,
-    onAddProvider: () -> Unit,
-    onEditProvider: (ProviderConfig) -> Unit,
-    onDeleteProvider: (Int) -> Unit,
+private fun SettingsDetailPlaceholder(
+    providerCount: Int,
+    routeCount: Int,
 ) {
-    Column(
-        modifier =
-            modifier
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        ProviderSettings(
-            providers = providers,
-            onAdd = onAddProvider,
-            onEdit = onEditProvider,
-            onDelete = onDeleteProvider,
-            onManageModels = navigatorAction,
-        )
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 420.dp)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.config_detail_placeholder_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(
+                    text = stringResource(R.string.config_detail_placeholder_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    text = stringResource(R.string.config_about_provider_count_value, providerCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.config_about_route_count_value, routeCount),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun RouteTabContent(
-    modifier: Modifier = Modifier,
-    routes: List<RouteRule>,
-    onAddRoute: () -> Unit,
-    onEditRoute: (RouteRule) -> Unit,
-    onDeleteRoute: (Int) -> Unit,
+private fun GeneralSettingsPane(
+    providers: List<ProviderConfig>,
+    quickToolModel: QuickToolModelConfig,
+    onQuickToolModelChange: (QuickToolModelConfig) -> Unit,
+    showHeader: Boolean,
 ) {
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    SettingsLazyPage(
+        headerTitle = if (showHeader) stringResource(R.string.config_section_general) else null,
+        headerSummary = if (showHeader) stringResource(R.string.config_section_general_summary) else null,
     ) {
-        RouteSettings(
-            routes = routes,
-            onAdd = onAddRoute,
-            onEdit = onEditRoute,
-            onDelete = onDeleteRoute,
+        item {
+            QuickToolModelCard(
+                providers = providers,
+                config = quickToolModel,
+                onChange = onQuickToolModelChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutSettingsPane(
+    providerCount: Int,
+    routeCount: Int,
+    showHeader: Boolean,
+) {
+    val context = LocalContext.current
+    val packageName = context.packageName
+    val versionName =
+        remember(packageName) {
+            runCatching {
+                context.packageManager.getPackageInfo(packageName, 0).versionName
+            }.getOrNull().orEmpty()
+        }
+    SettingsLazyPage(
+        headerTitle = if (showHeader) stringResource(R.string.config_section_about) else null,
+        headerSummary = if (showHeader) stringResource(R.string.config_section_about_summary) else null,
+    ) {
+        item {
+            SettingsGroupSurface {
+                AboutInfoRow(
+                    title = stringResource(R.string.config_about_version),
+                    summary = versionName.ifBlank { stringResource(R.string.common_placeholder_dash) },
+                    icon = Icons.Default.Info,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AboutInfoRow(
+                    title = stringResource(R.string.config_about_package),
+                    summary = packageName,
+                    icon = Icons.Default.Android,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AboutInfoRow(
+                    title = stringResource(R.string.config_about_provider_count),
+                    summary = stringResource(R.string.config_about_provider_count_value, providerCount),
+                    icon = Icons.Default.Cloud,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                AboutInfoRow(
+                    title = stringResource(R.string.config_about_route_count),
+                    summary = stringResource(R.string.config_about_route_count_value, routeCount),
+                    icon = Icons.Default.Route,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderSettingsPane(
+    providers: List<ProviderConfig>,
+    onAdd: () -> Unit,
+    onEdit: (ProviderConfig) -> Unit,
+    onDelete: (Int) -> Unit,
+    onManageModels: (Int) -> Unit,
+    showHeader: Boolean,
+) {
+    SettingsLazyPage(
+        headerTitle = if (showHeader) stringResource(R.string.config_section_provider) else null,
+        headerSummary = if (showHeader) stringResource(R.string.config_section_provider_summary) else null,
+    ) {
+        item {
+            FilledTonalButton(
+                onClick = onAdd,
+                shape = MaterialTheme.shapes.large,
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.config_add_provider))
+            }
+        }
+        item {
+            SettingsGroupSurface {
+                if (providers.isEmpty()) {
+                    SettingsEmptyRow(text = stringResource(R.string.config_empty_provider))
+                } else {
+                    providers.forEachIndexed { index, provider ->
+                        if (index > 0) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                        ProviderListRow(
+                            provider = provider,
+                            onEdit = { onEdit(provider) },
+                            onDelete = { onDelete(provider.id) },
+                            onManageModels = { onManageModels(provider.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouteSettingsPane(
+    routes: List<RouteRule>,
+    onAdd: () -> Unit,
+    onEdit: (RouteRule) -> Unit,
+    onDelete: (Int) -> Unit,
+    showHeader: Boolean,
+) {
+    SettingsLazyPage(
+        headerTitle = if (showHeader) stringResource(R.string.config_section_route) else null,
+        headerSummary = if (showHeader) stringResource(R.string.config_section_route_summary) else null,
+    ) {
+        item {
+            FilledTonalButton(
+                onClick = onAdd,
+                shape = MaterialTheme.shapes.large,
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.route_add_rule))
+            }
+        }
+        item {
+            SettingsGroupSurface {
+                if (routes.isEmpty()) {
+                    SettingsEmptyRow(text = stringResource(R.string.route_empty_rule))
+                } else {
+                    routes.forEachIndexed { index, rule ->
+                        if (index > 0) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        }
+                        RouteListRow(
+                            rule = rule,
+                            onEdit = { onEdit(rule) },
+                            onDelete = { onDelete(rule.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickToolModelCard(
+    providers: List<ProviderConfig>,
+    config: QuickToolModelConfig,
+    onChange: (QuickToolModelConfig) -> Unit,
+) {
+    val availableProviders = providers.filter { it.enabledModels.isNotEmpty() }
+    val resolvedProvider =
+        availableProviders.firstOrNull { it.id == config.providerId } ?: availableProviders.firstOrNull()
+    val resolvedProviderId = resolvedProvider?.id ?: 0
+    val availableModelIds = resolvedProvider?.enabledModels.orEmpty()
+    val resolvedModelId =
+        when {
+            config.modelId in availableModelIds -> config.modelId
+            availableModelIds.isNotEmpty() -> availableModelIds.first()
+            else -> ""
+        }
+
+    SettingsGroupSurface {
+        QuickToolModelSummaryRow(
+            title = stringResource(R.string.config_quick_tool_model),
+            summary =
+                if (resolvedProvider != null && resolvedModelId.isNotBlank()) {
+                    "${resolvedProvider.name} · $resolvedModelId"
+                } else {
+                    stringResource(R.string.config_quick_tool_model_unset)
+                },
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.config_quick_tool_model_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (availableProviders.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.model_dropdown_empty_placeholder),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                ProviderInstanceDropdown(
+                    providers = availableProviders,
+                    selectedProviderId = resolvedProviderId,
+                    onSelect = { providerId ->
+                        val modelId = availableProviders.firstOrNull { it.id == providerId }?.enabledModels?.firstOrNull().orEmpty()
+                        onChange(
+                            QuickToolModelConfig(
+                                providerId = providerId,
+                                modelId = modelId,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ModelIdDropdown(
+                    modelIds = availableModelIds,
+                    selectedModelId = resolvedModelId,
+                    onSelect = { modelId ->
+                        onChange(
+                            QuickToolModelConfig(
+                                providerId = resolvedProviderId,
+                                modelId = modelId,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 
@@ -1363,41 +2048,20 @@ private fun ProviderInstanceDropdown(
     providers: List<ProviderConfig>,
     selectedProviderId: Int,
     onSelect: (Int) -> Unit,
+    shape: Shape = MaterialTheme.shapes.large,
     modifier: Modifier = Modifier,
 ) {
     val selectedProvider = providers.firstOrNull { it.id == selectedProviderId }
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
+    SettingsDropdownField(
+        valueText = selectedProvider?.name.orEmpty(),
+        label = stringResource(R.string.provider_dropdown_label),
+        items = providers,
+        onSelect = { provider -> onSelect(provider.id) },
+        itemText = { it.name },
         modifier = modifier,
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-    ) {
-        OutlinedTextField(
-            value = selectedProvider?.name.orEmpty(),
-            onValueChange = {},
-            readOnly = true,
-            singleLine = true,
-            label = { Text(stringResource(R.string.provider_dropdown_label)) },
-            placeholder = { Text(stringResource(R.string.provider_dropdown_placeholder)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            providers.forEach { provider ->
-                DropdownMenuItem(
-                    text = { Text(provider.name) },
-                    onClick = {
-                        onSelect(provider.id)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
+        placeholder = stringResource(R.string.provider_dropdown_placeholder),
+        shape = shape,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1406,50 +2070,26 @@ private fun ModelIdDropdown(
     modelIds: List<String>,
     selectedModelId: String,
     onSelect: (String) -> Unit,
+    shape: Shape = MaterialTheme.shapes.large,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val enabled = modelIds.isNotEmpty()
-
-    ExposedDropdownMenuBox(
+    SettingsDropdownField(
+        valueText = selectedModelId,
+        label = stringResource(R.string.model_dropdown_label),
+        items = modelIds,
+        onSelect = onSelect,
+        itemText = { it },
         modifier = modifier,
-        expanded = expanded,
-        onExpandedChange = { if (enabled) expanded = it },
-    ) {
-        OutlinedTextField(
-            value = selectedModelId,
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            singleLine = true,
-            label = { Text(stringResource(R.string.model_dropdown_label)) },
-            placeholder = {
-                Text(
-                    if (enabled) {
-                        stringResource(R.string.model_dropdown_placeholder)
-                    } else {
-                        stringResource(R.string.model_dropdown_empty_placeholder)
-                    }
-                )
+        enabled = enabled,
+        placeholder =
+            if (enabled) {
+                stringResource(R.string.model_dropdown_placeholder)
+            } else {
+                stringResource(R.string.model_dropdown_empty_placeholder)
             },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            modelIds.forEach { modelId ->
-                DropdownMenuItem(
-                    text = { Text(modelId) },
-                    onClick = {
-                        onSelect(modelId)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
+        shape = shape,
+    )
 }
 
 

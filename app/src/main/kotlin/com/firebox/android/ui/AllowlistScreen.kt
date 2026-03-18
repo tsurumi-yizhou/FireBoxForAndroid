@@ -81,7 +81,10 @@ fun AllowlistScreen() {
             ) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
                 ) {
                     Row(
                         modifier = Modifier
@@ -174,9 +177,9 @@ private fun AllowlistClientCard(entry: AllowlistClientEntry) {
             if (entry.hasHistory) add(historyText)
         }.joinToString(" | ")
 
-    Card(
+    OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = MaterialTheme.shapes.medium,
     ) {
         Column(
             modifier = Modifier

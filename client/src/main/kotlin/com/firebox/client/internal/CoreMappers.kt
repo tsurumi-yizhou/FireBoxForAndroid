@@ -1,5 +1,6 @@
 package com.firebox.client.internal
 
+import android.os.ParcelFileDescriptor
 import com.firebox.client.model.FireBoxChatRequest
 import com.firebox.client.model.FireBoxChatResponse
 import com.firebox.client.model.FireBoxChatResult
@@ -10,13 +11,17 @@ import com.firebox.client.model.FireBoxEmbeddingResult
 import com.firebox.client.model.FireBoxFunctionResponse
 import com.firebox.client.model.FireBoxFunctionResult
 import com.firebox.client.model.FireBoxFunctionSpec
+import com.firebox.client.model.FireBoxMediaFormat
 import com.firebox.client.model.FireBoxMessage
+import com.firebox.client.model.FireBoxMessageAttachment
 import com.firebox.client.model.FireBoxModelCandidateInfo
+import com.firebox.client.model.FireBoxModelCapabilities
 import com.firebox.client.model.FireBoxModelInfo
 import com.firebox.client.model.FireBoxProviderSelection
 import com.firebox.client.model.FireBoxSdkError
 import com.firebox.client.model.FireBoxStreamEvent
 import com.firebox.client.model.FireBoxUsage
+import com.firebox.core.ChatAttachment
 import com.firebox.core.ChatCompletionRequest
 import com.firebox.core.ChatCompletionResponse
 import com.firebox.core.ChatCompletionResult
@@ -31,9 +36,12 @@ import com.firebox.core.FunctionCallRequest
 import com.firebox.core.FunctionCallResponse
 import com.firebox.core.FunctionCallResult
 import com.firebox.core.ModelCandidateInfo
+import com.firebox.core.ModelCapabilities
+import com.firebox.core.ModelMediaFormat
 import com.firebox.core.ProviderSelection
 import com.firebox.core.Usage
 import com.firebox.core.VirtualModelInfo
+import java.io.File
 import kotlinx.serialization.KSerializer
 
 internal fun FireBoxChatRequest.toCore(): ChatCompletionRequest =
@@ -66,15 +74,53 @@ private fun FireBoxMessage.toCore(): ChatMessage =
     ChatMessage(
         role = role,
         content = content,
+        attachments = attachments.map(FireBoxMessageAttachment::toCore),
     )
+
+private fun FireBoxMessageAttachment.toCore(): ChatAttachment {
+    val file = File(filePath)
+    val descriptor =
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            ?: throw IllegalStateException("Unable to open attachment: $filePath")
+    return ChatAttachment(
+        mediaFormat = mediaFormat.toCore(),
+        mimeType = mimeType,
+        fileName = fileName,
+        fileDescriptor = descriptor,
+        sizeBytes = sizeBytes.takeIf { it >= 0L } ?: file.length(),
+    )
+}
 
 internal fun VirtualModelInfo.toClient(): FireBoxModelInfo =
     FireBoxModelInfo(
         virtualModelId = virtualModelId,
         strategy = strategy,
+        capabilities = capabilities.toClient(),
         candidates = candidates.map(ModelCandidateInfo::toClient),
         available = available,
     )
+
+private fun ModelCapabilities.toClient(): FireBoxModelCapabilities =
+    FireBoxModelCapabilities(
+        reasoning = reasoning,
+        toolCalling = toolCalling,
+        inputFormats = inputFormats.map(ModelMediaFormat::toClient),
+        outputFormats = outputFormats.map(ModelMediaFormat::toClient),
+    )
+
+private fun ModelMediaFormat.toClient(): FireBoxMediaFormat =
+    when (this) {
+        ModelMediaFormat.Image -> FireBoxMediaFormat.Image
+        ModelMediaFormat.Video -> FireBoxMediaFormat.Video
+        ModelMediaFormat.Audio -> FireBoxMediaFormat.Audio
+    }
+
+private fun FireBoxMediaFormat.toCore(): ModelMediaFormat =
+    when (this) {
+        FireBoxMediaFormat.Image -> ModelMediaFormat.Image
+        FireBoxMediaFormat.Video -> ModelMediaFormat.Video
+        FireBoxMediaFormat.Audio -> ModelMediaFormat.Audio
+    }
 
 private fun ModelCandidateInfo.toClient(): FireBoxModelCandidateInfo =
     FireBoxModelCandidateInfo(
@@ -91,6 +137,7 @@ internal fun ChatCompletionResponse.toClient(): FireBoxChatResponse =
     FireBoxChatResponse(
         virtualModelId = virtualModelId,
         message = message.toClient(),
+        reasoningText = reasoningText,
         selection = selection.toClient(),
         usage = usage.toClient(),
         finishReason = finishReason,
@@ -127,6 +174,7 @@ internal fun CoreChatStreamEvent.toClient(): FireBoxStreamEvent =
         requestId = requestId,
         type = type.toClientStreamType(),
         deltaText = deltaText,
+        reasoningText = reasoningText,
         selection = selection?.toClient(),
         usage = usage?.toClient(),
         response = response?.toClient(),
@@ -137,6 +185,7 @@ private fun ChatMessage.toClient(): FireBoxMessage =
     FireBoxMessage(
         role = role,
         content = content,
+        attachments = emptyList(),
     )
 
 private fun ProviderSelection.toClient(): FireBoxProviderSelection =
@@ -186,5 +235,6 @@ private fun Int.toClientStreamType(): FireBoxStreamEvent.Type =
         CoreChatStreamEvent.COMPLETED -> FireBoxStreamEvent.Type.COMPLETED
         CoreChatStreamEvent.ERROR -> FireBoxStreamEvent.Type.ERROR
         CoreChatStreamEvent.CANCELLED -> FireBoxStreamEvent.Type.CANCELLED
+        CoreChatStreamEvent.REASONING_DELTA -> FireBoxStreamEvent.Type.REASONING_DELTA
         else -> FireBoxStreamEvent.Type.ERROR
     }

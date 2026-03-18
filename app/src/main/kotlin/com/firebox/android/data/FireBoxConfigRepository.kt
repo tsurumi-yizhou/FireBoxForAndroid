@@ -5,6 +5,7 @@ import com.firebox.android.ai.ProviderBaseUrlNormalizer
 import com.firebox.android.model.ClientAccessRecord
 import com.firebox.android.model.ProviderConfig
 import com.firebox.android.model.ProviderType
+import com.firebox.android.model.QuickToolModelConfig
 import com.firebox.android.model.RouteRule
 import com.firebox.android.model.RouteStrategy
 import kotlinx.coroutines.flow.combine
@@ -43,6 +44,9 @@ class FireBoxConfigRepository internal constructor(
 
     val routes: Flow<List<RouteRule>> =
         storage.routes.distinctUntilChanged()
+
+    val quickToolModel: Flow<QuickToolModelConfig> =
+        storage.quickToolModel.distinctUntilChanged()
 
     suspend fun recordClientConnected(
         packageName: String,
@@ -135,6 +139,13 @@ class FireBoxConfigRepository internal constructor(
         storage.updateProviders { current ->
             current.filterNot { it.id == providerId }
         }
+        storage.updateQuickToolModel { current ->
+            if (current.providerId == providerId) {
+                QuickToolModelConfig()
+            } else {
+                current
+            }
+        }
     }
 
     suspend fun addRouteRule() {
@@ -169,6 +180,10 @@ class FireBoxConfigRepository internal constructor(
         storage.updateRoutes { current ->
             current.filterNot { it.id == ruleId }
         }
+    }
+
+    suspend fun upsertQuickToolModel(config: QuickToolModelConfig) {
+        storage.updateQuickToolModel { config }
     }
 
     private fun upsertClientAccessRecord(

@@ -83,6 +83,8 @@
     <string name="config_api_key_label">API 密钥</string>
     <string name="config_api_key_edit_placeholder">留空则不修改密钥</string>
     <string name="config_manage_models">管理模型</string>
+    <string name="config_quick_tool_model">快速工具模型</string>
+    <string name="config_quick_tool_model_hint">用于会话标题生成等轻量工具任务。</string>
     <string name="config_provider_type_label">提供商类型</string>
     <string name="provider_bind_invalid_link">无效的 Provider 绑定链接</string>
 
@@ -98,6 +100,14 @@
     <string name="route_move_up_cd">上移</string>
     <string name="route_move_down_cd">下移</string>
     <string name="route_delete_target_cd">删除目标</string>
+    <string name="route_capabilities_label">模型能力</string>
+    <string name="route_capability_reasoning">推理</string>
+    <string name="route_capability_tool_calling">工具调用</string>
+    <string name="route_multimodal_input_label">多模态输入</string>
+    <string name="route_multimodal_output_label">多模态输出</string>
+    <string name="route_media_format_image">图片</string>
+    <string name="route_media_format_video">视频</string>
+    <string name="route_media_format_audio">音频</string>
 
     <string name="provider_dropdown_label">提供商</string>
     <string name="provider_dropdown_placeholder">选择提供商</string>

@@ -11,8 +11,12 @@ import com.firebox.core.EmbeddingResult
 import com.firebox.core.FireBoxError
 import com.firebox.core.FunctionCallResponse
 import com.firebox.core.FunctionCallResult
+import com.firebox.core.ModelCandidateInfo
+import com.firebox.core.ModelCapabilities
+import com.firebox.core.ModelMediaFormat
 import com.firebox.core.ProviderSelection
 import com.firebox.core.Usage
+import com.firebox.core.VirtualModelInfo
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import org.junit.Assert.assertEquals
@@ -90,6 +94,21 @@ class CoreMappersTest {
     }
 
     @Test
+    fun titleOutputSchema_isValidForOpenAiStructuredOutputs() {
+        val schema = FunctionSchemaSupport.schema(TitleTestOutput.serializer())
+        // OpenAI Structured Outputs requires: type=object, no $schema/$defs/$id, additionalProperties=false, no nulls
+        assertFalse("Schema must not contain \$schema, got: $schema", schema.contains("\"\$schema\""))
+        assertFalse("Schema must not contain \$id, got: $schema", schema.contains("\"\$id\""))
+        assertFalse("Schema must not contain \$defs, got: $schema", schema.contains("\"\$defs\""))
+        assertFalse("Schema must not contain null values, got: $schema", schema.contains(":null"))
+        assertTrue("Schema must contain additionalProperties, got: $schema", schema.contains("additionalProperties"))
+        assertTrue("Schema must contain type:object, got: $schema", schema.contains("\"type\":\"object\""))
+    }
+
+    @Serializable
+    private data class TitleTestOutput(val title: String)
+
+    @Test
     fun functionSpec_toCoreGeneratesStrictSchemas() {
         val spec =
             FireBoxFunctionSpec(
@@ -107,6 +126,42 @@ class CoreMappersTest {
         assertTrue(request.inputSchemaJson.contains("\"additionalProperties\":false"))
         assertTrue(request.outputSchemaJson.contains("\"required\":[\"name\",\"age\"]"))
         assertFalse(request.outputSchemaJson.isBlank())
+    }
+
+    @Test
+    fun virtualModelInfo_mapsCapabilitiesToClient() {
+        val info =
+            VirtualModelInfo(
+                virtualModelId = "chat-default",
+                strategy = "Failover",
+                capabilities =
+                    ModelCapabilities(
+                        reasoning = true,
+                        toolCalling = true,
+                        inputFormats = listOf(ModelMediaFormat.Image, ModelMediaFormat.Audio),
+                        outputFormats = listOf(ModelMediaFormat.Video),
+                    ),
+                candidates =
+                    listOf(
+                        ModelCandidateInfo(
+                            providerId = 1,
+                            providerType = "OpenAI",
+                            providerName = "Primary",
+                            baseUrl = "https://example.com",
+                            modelId = "gpt-4.1",
+                            enabledInConfig = true,
+                            capabilitySupported = true,
+                        ),
+                    ),
+                available = true,
+            )
+
+        val mapped = info.toClient()
+
+        assertTrue(mapped.capabilities.reasoning)
+        assertTrue(mapped.capabilities.toolCalling)
+        assertEquals(listOf(com.firebox.client.model.FireBoxMediaFormat.Image, com.firebox.client.model.FireBoxMediaFormat.Audio), mapped.capabilities.inputFormats)
+        assertEquals(listOf(com.firebox.client.model.FireBoxMediaFormat.Video), mapped.capabilities.outputFormats)
     }
 
     @Test

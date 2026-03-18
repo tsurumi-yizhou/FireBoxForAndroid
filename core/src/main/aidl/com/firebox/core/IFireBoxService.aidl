@@ -43,4 +43,5 @@ interface IFireBoxService {
 
     // 结构化函数调用
     FunctionCallResult callFunction(in FunctionCallRequest req);
+
 }

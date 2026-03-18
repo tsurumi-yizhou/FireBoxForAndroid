@@ -1,10 +1,20 @@
 package com.firebox.client.model
 
+import java.io.File
 import kotlinx.serialization.KSerializer
+
+data class FireBoxMessageAttachment(
+    val mediaFormat: FireBoxMediaFormat,
+    val mimeType: String,
+    val filePath: String,
+    val fileName: String? = File(filePath).name,
+    val sizeBytes: Long = File(filePath).length(),
+)
 
 data class FireBoxMessage(
     val role: String,
     val content: String,
+    val attachments: List<FireBoxMessageAttachment> = emptyList(),
 )
 
 data class FireBoxChatRequest(
@@ -30,6 +40,7 @@ data class FireBoxUsage(
 data class FireBoxChatResponse(
     val virtualModelId: String,
     val message: FireBoxMessage,
+    val reasoningText: String?,
     val selection: FireBoxProviderSelection,
     val usage: FireBoxUsage,
     val finishReason: String,
@@ -74,9 +85,23 @@ data class FireBoxModelCandidateInfo(
     val capabilitySupported: Boolean,
 )
 
+enum class FireBoxMediaFormat {
+    Image,
+    Video,
+    Audio,
+}
+
+data class FireBoxModelCapabilities(
+    val reasoning: Boolean,
+    val toolCalling: Boolean,
+    val inputFormats: List<FireBoxMediaFormat>,
+    val outputFormats: List<FireBoxMediaFormat>,
+)
+
 data class FireBoxModelInfo(
     val virtualModelId: String,
     val strategy: String,
+    val capabilities: FireBoxModelCapabilities,
     val candidates: List<FireBoxModelCandidateInfo>,
     val available: Boolean,
 )
@@ -121,6 +146,7 @@ data class FireBoxStreamEvent(
     val requestId: Long,
     val type: Type,
     val deltaText: String?,
+    val reasoningText: String?,
     val selection: FireBoxProviderSelection?,
     val usage: FireBoxUsage?,
     val response: FireBoxChatResponse?,
@@ -133,6 +159,7 @@ data class FireBoxStreamEvent(
         COMPLETED,
         ERROR,
         CANCELLED,
+        REASONING_DELTA,
     }
 }
 

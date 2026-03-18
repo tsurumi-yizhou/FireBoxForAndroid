@@ -17,11 +17,16 @@ import com.firebox.core.FunctionCallRequest
 import com.firebox.core.FunctionCallResponse
 import com.firebox.core.IChatStreamCallback
 import com.firebox.core.ModelCandidateInfo
+import com.firebox.core.ModelCapabilities
+import com.firebox.core.ModelMediaFormat
 import com.firebox.core.ProviderSelection
 import com.firebox.core.Usage
 import com.firebox.core.VirtualModelInfo
+import java.util.Base64
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
+
+private const val MAX_CHAT_ATTACHMENT_BYTES = 8L * 1024L * 1024L
 
 internal class FireBoxAiDispatcher(
     private val providerGateway: FireBoxProviderGateway = FireBoxProviderGateway(),
@@ -49,6 +54,7 @@ internal class FireBoxAiDispatcher(
                 VirtualModelInfo(
                     virtualModelId = route.virtualModelId,
                     strategy = route.strategy.displayName,
+                    capabilities = route.capabilities.toCore(),
                     candidates = candidates,
                     available = candidates.any { it.enabledInConfig && it.capabilitySupported },
                 )
@@ -60,16 +66,18 @@ internal class FireBoxAiDispatcher(
     ): ChatCompletionResponse {
         validateChatRequest(request)
         val route = resolveRoute(snapshot, request.virtualModelId)
+        val preparedRequest = prepareChatRequest(request, route)
         val resolved =
             executeCandidates(
                 route = route,
                 snapshot = snapshot,
                 capability = ProviderCapability.Chat,
             ) { candidate ->
-                val result = providerGateway.chatCompletion(candidate.provider, candidate.modelId, request)
+                val result = providerGateway.chatCompletion(candidate.provider, candidate.modelId, preparedRequest)
                 ChatCompletionResponse(
                     virtualModelId = request.virtualModelId,
                     message = ChatMessage(role = "assistant", content = result.messageText),
+                    reasoningText = result.reasoningText,
                     selection = candidate.selection,
                     usage = result.usage,
                     finishReason = result.finishReason,
@@ -104,21 +112,15 @@ internal class FireBoxAiDispatcher(
         request: FunctionCallRequest,
     ): FunctionCallResponse {
         validateFunctionCallRequest(request)
-        val route = resolveRoute(snapshot, request.virtualModelId)
-        return executeCandidates(
-            route = route,
-            snapshot = snapshot,
-            capability = ProviderCapability.FunctionCall,
-        ) { candidate ->
-            val result = providerGateway.callFunction(candidate.provider, candidate.modelId, request)
-            FunctionCallResponse(
-                virtualModelId = request.virtualModelId,
-                outputJson = result.outputJson,
-                selection = candidate.selection,
-                usage = result.usage,
-                finishReason = result.finishReason,
-            )
-        }
+        val candidate = resolveQuickToolCandidate(snapshot)
+        val result = providerGateway.callFunction(candidate.provider, candidate.modelId, request)
+        return FunctionCallResponse(
+            virtualModelId = request.virtualModelId,
+            outputJson = result.outputJson,
+            selection = candidate.selection,
+            usage = result.usage,
+            finishReason = result.finishReason,
+        )
     }
 
     suspend fun streamChatCompletion(
@@ -130,6 +132,7 @@ internal class FireBoxAiDispatcher(
         return try {
             validateChatRequest(request)
             val route = resolveRoute(snapshot, request.virtualModelId)
+            val preparedRequest = prepareChatRequest(request, route)
             val deltaBatcher = StreamDeltaBatcher { delta ->
                 sendEvent(
                     callback,
@@ -137,6 +140,21 @@ internal class FireBoxAiDispatcher(
                         requestId = requestId,
                         type = ChatStreamEvent.DELTA,
                         deltaText = delta,
+                        selection = null,
+                        usage = null,
+                        response = null,
+                        error = null,
+                    ),
+                )
+            }
+            val reasoningBatcher = StreamDeltaBatcher { delta ->
+                sendEvent(
+                    callback,
+                    ChatStreamEvent(
+                        requestId = requestId,
+                        type = ChatStreamEvent.REASONING_DELTA,
+                        deltaText = null,
+                        reasoningText = delta,
                         selection = null,
                         usage = null,
                         response = null,
@@ -166,13 +184,16 @@ internal class FireBoxAiDispatcher(
                     },
                 ) { candidate ->
                     val result =
-                        providerGateway.streamChatCompletion(candidate.provider, candidate.modelId, request) { delta ->
-                            deltaBatcher.append(delta)
+                        providerGateway.streamChatCompletion(candidate.provider, candidate.modelId, preparedRequest) { delta ->
+                            deltaBatcher.append(delta.text)
+                            reasoningBatcher.append(delta.reasoning)
                         }
                     deltaBatcher.flush()
+                    reasoningBatcher.flush()
                     ChatCompletionResponse(
                         virtualModelId = request.virtualModelId,
                         message = ChatMessage(role = "assistant", content = result.messageText),
+                        reasoningText = result.reasoningText,
                         selection = candidate.selection,
                         usage = result.usage,
                         finishReason = result.finishReason,
@@ -209,28 +230,30 @@ internal class FireBoxAiDispatcher(
         } catch (cancelled: CancellationException) {
             sendTerminalIfPossible(
                 callback,
-                ChatStreamEvent(
-                    requestId = requestId,
-                    type = ChatStreamEvent.CANCELLED,
-                    deltaText = null,
-                    selection = null,
-                    usage = null,
-                    response = null,
-                    error = FireBoxError(FireBoxError.CANCELLED, cancelled.message ?: "������ȡ��", null, null),
+                    ChatStreamEvent(
+                        requestId = requestId,
+                        type = ChatStreamEvent.CANCELLED,
+                        deltaText = null,
+                        reasoningText = null,
+                        selection = null,
+                        usage = null,
+                        response = null,
+                        error = FireBoxError(FireBoxError.CANCELLED, cancelled.message ?: "������ȡ��", null, null),
                 ),
             )
             null
         } catch (serviceException: FireBoxServiceException) {
             sendTerminalIfPossible(
                 callback,
-                ChatStreamEvent(
-                    requestId = requestId,
-                    type = ChatStreamEvent.ERROR,
-                    deltaText = null,
-                    selection = null,
-                    usage = null,
-                    response = null,
-                    error = serviceException.error,
+                    ChatStreamEvent(
+                        requestId = requestId,
+                        type = ChatStreamEvent.ERROR,
+                        deltaText = null,
+                        reasoningText = null,
+                        selection = null,
+                        usage = null,
+                        response = null,
+                        error = serviceException.error,
                 ),
             )
             null
@@ -239,14 +262,15 @@ internal class FireBoxAiDispatcher(
         } catch (other: Throwable) {
             sendTerminalIfPossible(
                 callback,
-                ChatStreamEvent(
-                    requestId = requestId,
-                    type = ChatStreamEvent.ERROR,
-                    deltaText = null,
-                    selection = null,
-                    usage = null,
-                    response = null,
-                    error = FireBoxError(FireBoxError.INTERNAL, other.message ?: "�ڲ�����", null, null),
+                    ChatStreamEvent(
+                        requestId = requestId,
+                        type = ChatStreamEvent.ERROR,
+                        deltaText = null,
+                        reasoningText = null,
+                        selection = null,
+                        usage = null,
+                        response = null,
+                        error = FireBoxError(FireBoxError.INTERNAL, other.message ?: "�ڲ�����", null, null),
                 ),
             )
             null
@@ -313,6 +337,30 @@ internal class FireBoxAiDispatcher(
                 ),
             )
 
+    private fun resolveQuickToolCandidate(snapshot: RuntimeSnapshot): ResolvedCandidate {
+        val quickTool = snapshot.quickToolSelection
+        if (quickTool.providerId <= 0 || quickTool.modelId.isBlank()) {
+            throw noQuickToolCandidate("Quick tool model is not configured")
+        }
+        val provider =
+            snapshot.providersById[quickTool.providerId]
+                ?: throw noQuickToolCandidate("快速工具模型对应的供应商不存在")
+        if (!provider.isModelEnabled(quickTool.modelId)) {
+            throw noQuickToolCandidate("快速工具模型未启用或缺少 API Key")
+        }
+        return ResolvedCandidate(
+            provider = provider,
+            modelId = quickTool.modelId,
+            selection =
+                ProviderSelection(
+                    providerId = provider.id,
+                    providerType = provider.type.displayName,
+                    providerName = provider.name,
+                    modelId = quickTool.modelId,
+                ),
+        )
+    }
+
     private fun resolveCandidates(
         snapshot: RuntimeSnapshot,
         route: RouteRule,
@@ -358,6 +406,11 @@ internal class FireBoxAiDispatcher(
         if (message.role !in setOf("system", "user", "assistant")) {
             throw invalidArgument("不支持的消息角色�?{message.role}")
         }
+        message.attachments.forEach { attachment ->
+            if (attachment.mimeType.isBlank()) {
+                throw invalidArgument("attachment mimeType 不能为空")
+            }
+        }
     }
 
     private fun validateEmbeddingRequest(request: EmbeddingRequest) {
@@ -401,6 +454,16 @@ internal class FireBoxAiDispatcher(
             ),
         )
 
+    private fun noQuickToolCandidate(message: String): FireBoxServiceException =
+        FireBoxServiceException(
+            FireBoxError(
+                code = FireBoxError.NO_CANDIDATE,
+                message = message,
+                providerType = null,
+                providerModelId = null,
+            ),
+        )
+
     private fun sendEvent(
         callback: IChatStreamCallback,
         event: ChatStreamEvent,
@@ -429,6 +492,12 @@ internal class FireBoxAiDispatcher(
 internal data class RuntimeSnapshot(
     val providersById: Map<Int, ProviderConfig>,
     val routesByVirtualModelId: Map<String, RouteRule>,
+    val quickToolSelection: QuickToolSelection = QuickToolSelection(),
+)
+
+internal data class QuickToolSelection(
+    val providerId: Int = 0,
+    val modelId: String = "",
 )
 
 private data class ResolvedCandidate(
@@ -460,12 +529,80 @@ private enum class ProviderCapability {
         when (this) {
             Chat -> true
             Embedding -> type == ProviderType.OpenAI || type == ProviderType.Gemini
-            FunctionCall -> type == ProviderType.OpenAI
+            FunctionCall -> true
         }
 }
 
 private fun ProviderConfig.isModelEnabled(modelId: String): Boolean =
     apiKey.isNotBlank() && enabledModels.contains(modelId)
+
+private fun com.firebox.android.model.RouteModelCapabilities.toCore(): ModelCapabilities =
+    ModelCapabilities(
+        reasoning = reasoning,
+        toolCalling = toolCalling,
+        inputFormats = inputFormats.map(com.firebox.android.model.RouteMediaFormat::toCore),
+        outputFormats = outputFormats.map(com.firebox.android.model.RouteMediaFormat::toCore),
+    )
+
+private fun com.firebox.android.model.RouteMediaFormat.toCore(): ModelMediaFormat =
+    when (this) {
+        com.firebox.android.model.RouteMediaFormat.Image -> ModelMediaFormat.Image
+        com.firebox.android.model.RouteMediaFormat.Video -> ModelMediaFormat.Video
+        com.firebox.android.model.RouteMediaFormat.Audio -> ModelMediaFormat.Audio
+    }
+
+private fun prepareChatRequest(
+    request: ChatCompletionRequest,
+    route: RouteRule,
+): ProviderChatRequest =
+    ProviderChatRequest(
+        virtualModelId = request.virtualModelId,
+        messages =
+            request.messages.map { message ->
+                ProviderChatMessage(
+                    role = message.role,
+                    content = message.content,
+                    attachments = message.attachments.map(::prepareChatAttachment),
+                )
+            },
+        temperature = request.temperature,
+        maxOutputTokens = request.maxOutputTokens,
+        reasoningEnabled = route.capabilities.reasoning,
+    )
+
+private fun prepareChatAttachment(attachment: com.firebox.core.ChatAttachment): ProviderChatAttachment {
+    val sizeBytes = attachment.sizeBytes.takeIf { it >= 0L } ?: attachment.fileDescriptor.statSize
+    if (sizeBytes > MAX_CHAT_ATTACHMENT_BYTES) {
+        throw FireBoxServiceException(
+            FireBoxError(
+                code = FireBoxError.INVALID_ARGUMENT,
+                message = "attachment 过大，超出单文件限制",
+                providerType = null,
+                providerModelId = null,
+            ),
+        )
+    }
+    val bytes =
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(attachment.fileDescriptor).use { stream ->
+            stream.readBytes()
+        }
+    if (bytes.size.toLong() > MAX_CHAT_ATTACHMENT_BYTES) {
+        throw FireBoxServiceException(
+            FireBoxError(
+                code = FireBoxError.INVALID_ARGUMENT,
+                message = "attachment 过大，超出单文件限制",
+                providerType = null,
+                providerModelId = null,
+            ),
+        )
+    }
+    return ProviderChatAttachment(
+        mediaFormat = attachment.mediaFormat,
+        mimeType = attachment.mimeType,
+        fileName = attachment.fileName,
+        base64Data = Base64.getEncoder().encodeToString(bytes),
+    )
+}
 
 private class StreamDeltaBatcher(
     private val maxDelayMs: Long = 40L,

@@ -58,6 +58,21 @@ enum class RouteStrategy(val displayName: String) {
 }
 
 @Serializable
+enum class RouteMediaFormat(val displayName: String) {
+    Image("Image"),
+    Video("Video"),
+    Audio("Audio"),
+}
+
+@Serializable
+data class RouteModelCapabilities(
+    val reasoning: Boolean = false,
+    val toolCalling: Boolean = false,
+    val inputFormats: List<RouteMediaFormat> = emptyList(),
+    val outputFormats: List<RouteMediaFormat> = emptyList(),
+)
+
+@Serializable
 data class ModelTarget(
     val providerId: Int = 0,
     val modelId: String = "",
@@ -71,6 +86,13 @@ data class RouteRule(
     val virtualModelId: String,
     val strategy: RouteStrategy,
     val candidates: List<ModelTarget>,
+    val capabilities: RouteModelCapabilities = RouteModelCapabilities(),
+)
+
+@Serializable
+data class QuickToolModelConfig(
+    val providerId: Int = 0,
+    val modelId: String = "",
 )
 
 object ConfigDefaults {
@@ -79,6 +101,8 @@ object ConfigDefaults {
     fun routes(): List<RouteRule> = emptyList()
 
     fun clientAccessRecords(): List<ClientAccessRecord> = emptyList()
+
+    fun quickToolModel(): QuickToolModelConfig = QuickToolModelConfig()
 }
 
 object ModelPricing {

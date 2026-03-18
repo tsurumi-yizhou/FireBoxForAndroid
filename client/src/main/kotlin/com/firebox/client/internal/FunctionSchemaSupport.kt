@@ -6,6 +6,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -22,7 +23,7 @@ internal object FunctionSchemaSupport {
     private val schemaJson =
         Json {
             encodeDefaults = true
-            explicitNulls = true
+            explicitNulls = false
             prettyPrint = false
         }
 
@@ -46,11 +47,21 @@ internal object FunctionSchemaSupport {
             ),
         )
 
+    // Keywords forbidden or unsupported by OpenAI Structured Outputs
+    private val strippedSchemaKeys = setOf(
+        "\$schema", "\$id", "\$anchor", "\$dynamicAnchor",
+        "\$ref", "\$dynamicRef", "\$comment", "\$defs",
+    )
+
     private fun normalizeSchema(element: JsonElement): JsonElement =
         when (element) {
             is JsonObject -> {
                 val normalizedValues =
-                    element.mapValues { (_, value) -> normalizeSchema(value) }.toMutableMap()
+                    element
+                        .filterKeys { it !in strippedSchemaKeys }
+                        .filterValues { it != JsonNull }
+                        .mapValues { (_, value) -> normalizeSchema(value) }
+                        .toMutableMap()
                 val typeElement = element["type"]
                 val isObjectSchema =
                     typeElement?.let(::containsObjectType) == true ||

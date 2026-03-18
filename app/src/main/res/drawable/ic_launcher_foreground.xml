@@ -1,15 +1,32 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
         android:width="108dp"
         android:height="108dp"
-        android:viewportWidth="24"
-        android:viewportHeight="24"
-        android:tint="#000000">
-    <group android:scaleX="0.58"
-           android:scaleY="0.58"
-           android:translateX="5.04"
-           android:translateY="5.04">
-        <path
-                android:pathData="M17.6,11.48 L19.44,8.3a0.63,0.63 0,0 0,-1.09 -0.63l-1.88,3.24a11.43,11.43 0,0 0,-8.94 0L5.65,7.67a0.63,0.63 0,0 0,-1.09 0.63L6.4,11.48A10.81,10.81 0,0 0,1 20L23,20A10.81,10.81 0,0 0,17.6 11.48ZM7,17.25A1.25,1.25 0,1 1,8.25 16,1.25 1.25,0 0,1 7,17.25ZM17,17.25A1.25,1.25 0,1 1,18.25 16,1.25 1.25,0 0,1 17,17.25Z"
-                android:fillColor="#FF000000"/>
-    </group>
+        android:viewportWidth="108"
+        android:viewportHeight="108">
+
+    <!-- Flame outer glow (subtle) -->
+    <path
+            android:pathData="M54,28c0,0 -2,4 -2,6c0,1.5 0.8,2.8 2,3.5c-3,1 -5,5 -5,5s-4,5.5 -4,12c0,9.4 7.6,17 17,17s17,-7.6 17,-17c0,-10 -7,-18 -12,-22.5L54,28z"
+            android:fillColor="#BF360C"
+            android:fillAlpha="0.3"/>
+
+    <!-- Main flame body -->
+    <path
+            android:pathData="M54,31c0,0 12,10.5 12,21.5c0,8.3 -6.7,15 -15,15s-15,-6.7 -15,-15c0,-5 2,-9 4.5,-12.5l1.5,-2l2.5,3.5c1,1.5 2,2.2 3.2,2.2c2.2,0 3.8,-2 3.8,-4.5c0,-1 -0.3,-2 -0.8,-3L54,31z"
+            android:fillColor="#FF6D00"/>
+
+    <!-- Flame middle layer -->
+    <path
+            android:pathData="M54,41c0,0 7.5,7 7.5,14c0,6.1 -4.5,10.5 -10.5,10.5c-6,0 -10.5,-4.4 -10.5,-10.5c0,-3.5 1.5,-6.5 3.5,-9l1.5,-2l2,3c0.8,1 1.5,1.5 2.5,1.5c1.5,0 2.8,-1.2 2.8,-3c0,-0.8 -0.2,-1.5 -0.5,-2.2L54,41z"
+            android:fillColor="#FF9100"/>
+
+    <!-- Flame inner layer -->
+    <path
+            android:pathData="M54,49c0,0 4.5,4.5 4.5,9c0,4 -2.8,7 -7,7c-4.2,0 -7,-3 -7,-7c0,-2.5 1,-4.5 2.5,-6.5l1,-1.2l1.2,1.8c0.5,0.8 1,1.2 1.8,1.2c1.2,0 2,-1 2,-2.2c0,-0.5 -0.1,-1 -0.3,-1.5L54,49z"
+            android:fillColor="#FFC107"/>
+
+    <!-- Flame core (brightest) -->
+    <path
+            android:pathData="M54,55c0,0 2.5,2.5 2.5,5c0,2.2 -1.5,3.8 -3.5,3.8c-2,0 -3.5,-1.6 -3.5,-3.8c0,-1.5 0.8,-3 1.8,-4.2L54,55z"
+            android:fillColor="#FFECB3"/>
 </vector>

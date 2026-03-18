@@ -108,7 +108,10 @@ fun DashboardScreen() {
 fun StatCard(stat: StatCardData) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
     ) {
         androidx.compose.foundation.layout.Column(
             modifier = Modifier

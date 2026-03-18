@@ -55,7 +55,10 @@ fun ConnectionsScreen() {
             ) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
                 ) {
                     Row(
                         modifier = Modifier
@@ -144,9 +147,9 @@ fun ConnectionItem(
             stringResource(R.string.connections_status_warning)
         }
 
-    Card(
+    OutlinedCard(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = MaterialTheme.shapes.medium,
     ) {
         Row(
             modifier = Modifier

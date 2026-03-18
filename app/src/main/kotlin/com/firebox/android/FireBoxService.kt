@@ -9,6 +9,7 @@ import android.os.RemoteException
 import android.util.Log
 import com.firebox.android.ai.FireBoxAiDispatcher
 import com.firebox.android.ai.FireBoxServiceException
+import com.firebox.android.ai.QuickToolSelection
 import com.firebox.android.ai.RuntimeSnapshot
 import com.firebox.android.model.ModelPricing
 import com.firebox.android.model.ProviderType
@@ -74,10 +75,16 @@ class FireBoxService : Service() {
         combine(
             repo.providers,
             repo.routes,
-        ) { providers, routes ->
+            repo.quickToolModel,
+        ) { providers, routes, quickToolModel ->
             RuntimeSnapshot(
                 providersById = providers.associateBy { it.id },
                 routesByVirtualModelId = routes.associateBy { it.virtualModelId.trim() }.filterKeys { it.isNotBlank() },
+                quickToolSelection =
+                    QuickToolSelection(
+                        providerId = quickToolModel.providerId,
+                        modelId = quickToolModel.modelId,
+                    ),
             )
         }.stateIn(
             scope = serviceScope,
@@ -142,16 +149,16 @@ class FireBoxService : Service() {
             return aiDispatcher.listVirtualModels(runtimeSnapshot.value).toMutableList()
         }
 
-        override fun chatCompletion(req: ChatCompletionRequest?): ChatCompletionResult =
-            runBlocking(Dispatchers.IO) {
+        override fun chatCompletion(req: ChatCompletionRequest?): ChatCompletionResult {
+            enforceBindPermission()
+            val request = req ?: throw IllegalArgumentException("req 不能为空")
+            val callingUid = Binder.getCallingUid()
+            val packageName = resolvePackageName(callingUid)
+            return runBlocking(Dispatchers.IO) {
                 fireBoxSyncResultOf(
                     success = { response -> ChatCompletionResult(response = response, error = null) },
                     failure = { error -> ChatCompletionResult(response = null, error = error) },
                 ) {
-                    enforceBindPermission()
-                    val request = req ?: throw IllegalArgumentException("req 不能为空")
-                    val callingUid = Binder.getCallingUid()
-                    val packageName = resolvePackageName(callingUid)
                     connectionStateHolder.onRequestMade(callingUid, packageName)
                     recordClientRequestAsync(packageName, callingUid)
                     val response = aiDispatcher.chatCompletion(runtimeSnapshot.value, request)
@@ -159,6 +166,7 @@ class FireBoxService : Service() {
                     response
                 }
             }
+        }
 
         override fun startChatCompletionStream(
             req: ChatCompletionRequest?,
@@ -211,16 +219,16 @@ class FireBoxService : Service() {
             active.job.cancel(CancellationException("调用方取消请求"))
         }
 
-        override fun createEmbeddings(req: EmbeddingRequest?): EmbeddingResult =
-            runBlocking(Dispatchers.IO) {
+        override fun createEmbeddings(req: EmbeddingRequest?): EmbeddingResult {
+            enforceBindPermission()
+            val request = req ?: throw IllegalArgumentException("req 不能为空")
+            val callingUid = Binder.getCallingUid()
+            val packageName = resolvePackageName(callingUid)
+            return runBlocking(Dispatchers.IO) {
                 fireBoxSyncResultOf(
                     success = { response -> EmbeddingResult(response = response, error = null) },
                     failure = { error -> EmbeddingResult(response = null, error = error) },
                 ) {
-                    enforceBindPermission()
-                    val request = req ?: throw IllegalArgumentException("req 不能为空")
-                    val callingUid = Binder.getCallingUid()
-                    val packageName = resolvePackageName(callingUid)
                     connectionStateHolder.onRequestMade(callingUid, packageName)
                     recordClientRequestAsync(packageName, callingUid)
                     val response = aiDispatcher.createEmbeddings(runtimeSnapshot.value, request)
@@ -228,17 +236,18 @@ class FireBoxService : Service() {
                     response
                 }
             }
+        }
 
-        override fun callFunction(req: FunctionCallRequest?): FunctionCallResult =
-            runBlocking(Dispatchers.IO) {
+        override fun callFunction(req: FunctionCallRequest?): FunctionCallResult {
+            enforceBindPermission()
+            val request = req ?: throw IllegalArgumentException("req 不能为空")
+            val callingUid = Binder.getCallingUid()
+            val packageName = resolvePackageName(callingUid)
+            return runBlocking(Dispatchers.IO) {
                 fireBoxSyncResultOf(
                     success = { response -> FunctionCallResult(response = response, error = null) },
                     failure = { error -> FunctionCallResult(response = null, error = error) },
                 ) {
-                    enforceBindPermission()
-                    val request = req ?: throw IllegalArgumentException("req 不能为空")
-                    val callingUid = Binder.getCallingUid()
-                    val packageName = resolvePackageName(callingUid)
                     connectionStateHolder.onRequestMade(callingUid, packageName)
                     recordClientRequestAsync(packageName, callingUid)
                     val response = aiDispatcher.callFunction(runtimeSnapshot.value, request)
@@ -246,6 +255,8 @@ class FireBoxService : Service() {
                     response
                 }
             }
+        }
+
     }
 
     override fun onCreate() {

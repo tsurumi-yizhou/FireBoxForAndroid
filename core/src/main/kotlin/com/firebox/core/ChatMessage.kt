@@ -7,4 +7,5 @@ import kotlinx.parcelize.Parcelize
 data class ChatMessage(
     val role: String,
     val content: String,
+    val attachments: List<ChatAttachment> = emptyList(),
 ) : Parcelable

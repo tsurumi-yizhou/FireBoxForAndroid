@@ -1,11 +1,13 @@
 package com.firebox.demo
-
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.firebox.client.FireBoxClient
+import com.firebox.client.model.FireBoxMediaFormat
 import com.firebox.client.model.FireBoxChatRequest
 import com.firebox.client.model.FireBoxMessage
+import com.firebox.client.model.FireBoxMessageAttachment
+import com.firebox.client.model.FireBoxModelInfo
 import com.firebox.client.model.FireBoxStreamEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import java.util.UUID
+
+private const val QUICK_TOOL_VIRTUAL_MODEL_ID = "__quick_tool__"
 
 @Serializable
 private data class TitleInput(val conversation: String)
@@ -27,7 +31,19 @@ data class ChatUiMessage(
     val id: Long,
     val role: String,
     val content: String,
+    val reasoningContent: String? = null,
+    val isReasoningExpanded: Boolean = false,
+    val attachments: List<ChatUiAttachment> = emptyList(),
+    val errorMessage: String? = null,
     val isStreaming: Boolean = false,
+)
+
+@Serializable
+data class ChatUiAttachment(
+    val mediaFormat: String,
+    val mimeType: String,
+    val filePath: String,
+    val fileName: String,
 )
 
 data class ChatUiState(
@@ -36,7 +52,7 @@ data class ChatUiState(
     val isConnected: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val availableModels: List<String> = emptyList(),
+    val availableModels: List<FireBoxModelInfo> = emptyList(),
     val selectedModel: String? = null,
     val modelsLoaded: Boolean = false,
 ) {
@@ -45,6 +61,9 @@ data class ChatUiState(
 
     val messages: List<ChatUiMessage>
         get() = activeConversation?.messages ?: emptyList()
+
+    val selectedModelInfo: FireBoxModelInfo?
+        get() = availableModels.firstOrNull { it.virtualModelId == selectedModel }
 }
 
 class ChatViewModel(
@@ -57,6 +76,7 @@ class ChatViewModel(
 
     private var messageIdCounter = 0L
     private var currentStreamingMessageId: Long? = null
+    private var currentUserMessageId: Long? = null
 
     init {
         client.addConnectionListener(object : FireBoxClient.ConnectionListener {
@@ -97,10 +117,18 @@ class ChatViewModel(
                 val models = client.listModels()
                 Log.d("ChatViewModel", "listModels returned: $models")
                 if (models != null) {
-                    val modelIds = models.filter { it.available }.map { it.virtualModelId }
-                    Log.d("ChatViewModel", "Available model IDs: $modelIds")
-                    _uiState.update {
-                        it.copy(availableModels = modelIds, modelsLoaded = true)
+                    val availableModels = models.filter { it.available }
+                    Log.d("ChatViewModel", "Available model IDs: ${availableModels.map { it.virtualModelId }}")
+                    _uiState.update { state ->
+                        val selectedModel =
+                            state.selectedModel?.takeIf { current ->
+                                availableModels.any { it.virtualModelId == current }
+                            } ?: availableModels.firstOrNull()?.virtualModelId
+                        state.copy(
+                            availableModels = availableModels,
+                            selectedModel = selectedModel,
+                            modelsLoaded = true,
+                        )
                     }
                 } else {
                     _uiState.update { it.copy(modelsLoaded = true) }
@@ -158,16 +186,20 @@ class ChatViewModel(
         }
     }
 
-    fun sendMessage(text: String) {
+    fun sendMessage(
+        text: String,
+        attachments: List<ChatUiAttachment> = emptyList(),
+    ) {
         val model = _uiState.value.selectedModel
         val activeId = _uiState.value.activeConversationId
-        if (text.isBlank() || model == null || activeId == null) return
+        if ((text.isBlank() && attachments.isEmpty()) || model == null || activeId == null) return
 
         val userMessageId = ++messageIdCounter
         val userMessage = ChatUiMessage(
             id = userMessageId,
             role = "user",
             content = text,
+            attachments = attachments,
         )
 
         _uiState.update { state ->
@@ -185,27 +217,105 @@ class ChatViewModel(
         }
         persistConversation(activeId)
 
-        val allMessages = _uiState.value.activeConversation?.messages?.map { msg ->
-            FireBoxMessage(role = msg.role, content = msg.content)
-        } ?: return
+        sendConversationMessage(conversationId = activeId, messageId = userMessageId, model = model)
+    }
+
+    fun retryMessage(messageId: Long) {
+        if (_uiState.value.isLoading) return
+        val conversationId = _uiState.value.activeConversationId ?: return
+        val model = _uiState.value.selectedModel ?: return
+        val conversation = _uiState.value.activeConversation ?: return
+        val retryTarget = conversation.resolveRetryTarget(messageId) ?: return
+        _uiState.update { state ->
+            state.copy(
+                conversations = state.conversations.map { conv ->
+                    if (conv.id == conversationId) {
+                        val retainedMessages =
+                            conv.trimmedForRetry(retryTarget.userMessageId)
+                                ?: return@map conv
+                        conv.copy(
+                            messages = retainedMessages,
+                        )
+                    } else {
+                        conv
+                    }
+                },
+                isLoading = true,
+                error = null,
+            )
+        }
+        persistConversation(conversationId)
+        sendConversationMessage(conversationId = conversationId, messageId = retryTarget.userMessageId, model = model)
+    }
+
+    fun deleteMessage(messageId: Long) {
+        val conversationId = _uiState.value.activeConversationId ?: return
+        _uiState.update { state ->
+            state.copy(
+                conversations = state.conversations.map { conv ->
+                    if (conv.id == conversationId) {
+                        conv.copy(messages = conv.messages.filterNot { it.id == messageId })
+                    } else {
+                        conv
+                    }
+                },
+            )
+        }
+        persistConversation(conversationId)
+    }
+
+    fun toggleReasoning(messageId: Long) {
+        val conversationId = _uiState.value.activeConversationId ?: return
+        _uiState.update { state ->
+            state.copy(
+                conversations = state.conversations.map { conv ->
+                    if (conv.id == conversationId) {
+                        conv.copy(
+                            messages =
+                                conv.messages.map { msg ->
+                                    if (msg.id == messageId) {
+                                        msg.copy(isReasoningExpanded = !msg.isReasoningExpanded)
+                                    } else {
+                                        msg
+                                    }
+                                },
+                        )
+                    } else {
+                        conv
+                    }
+                },
+            )
+        }
+        persistConversation(conversationId)
+    }
+
+    private fun sendConversationMessage(
+        conversationId: String,
+        messageId: Long,
+        model: String,
+    ) {
+        val allMessages =
+            _uiState.value.activeConversation?.messages?.mapNotNull { message ->
+                if (message.errorMessage != null && message.id != messageId) {
+                    null
+                } else {
+                    message.toClientMessage()
+                }
+            } ?: return
 
         val request = FireBoxChatRequest(
             virtualModelId = model,
             messages = allMessages,
         )
+        currentUserMessageId = messageId
 
         viewModelScope.launch {
             try {
                 client.streamChat(request).collect { event ->
-                    handleStreamEvent(activeId, event)
+                    handleStreamEvent(conversationId, event)
                 }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Unknown error",
-                    )
-                }
+                handleMessageFailure(conversationId, messageId, e.message ?: "Unknown error")
             }
         }
     }
@@ -219,6 +329,9 @@ class ChatViewModel(
                     id = assistantMessageId,
                     role = "assistant",
                     content = "",
+                    reasoningContent = null,
+                    isReasoningExpanded = true,
+                    errorMessage = null,
                     isStreaming = true,
                 )
                 _uiState.update { state ->
@@ -258,6 +371,33 @@ class ChatViewModel(
                 }
             }
 
+            FireBoxStreamEvent.Type.REASONING_DELTA -> {
+                val delta = event.reasoningText ?: return
+                val streamingId = currentStreamingMessageId ?: return
+                _uiState.update { state ->
+                    state.copy(
+                        conversations = state.conversations.map { conv ->
+                            if (conv.id == conversationId) {
+                                conv.copy(
+                                    messages = conv.messages.map { msg ->
+                                        if (msg.id == streamingId) {
+                                            msg.copy(
+                                                reasoningContent = msg.reasoningContent.orEmpty() + delta,
+                                                isReasoningExpanded = true,
+                                            )
+                                        } else {
+                                            msg
+                                        }
+                                    },
+                                )
+                            } else {
+                                conv
+                            }
+                        },
+                    )
+                }
+            }
+
             FireBoxStreamEvent.Type.COMPLETED -> {
                 val streamingId = currentStreamingMessageId
                 _uiState.update { state ->
@@ -267,7 +407,11 @@ class ChatViewModel(
                                 conv.copy(
                                     messages = conv.messages.map { msg ->
                                         if (msg.id == streamingId) {
-                                            msg.copy(isStreaming = false)
+                                            msg.copy(
+                                                isStreaming = false,
+                                                reasoningContent = event.response?.reasoningText ?: msg.reasoningContent,
+                                                isReasoningExpanded = false,
+                                            )
                                         } else {
                                             msg
                                         }
@@ -281,23 +425,35 @@ class ChatViewModel(
                     )
                 }
                 currentStreamingMessageId = null
+                currentUserMessageId = null
                 persistConversation(conversationId)
                 generateTitle(conversationId)
             }
 
             FireBoxStreamEvent.Type.ERROR -> {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = event.error?.message ?: "Stream error",
-                    )
-                }
-                currentStreamingMessageId = null
+                handleMessageFailure(
+                    conversationId = conversationId,
+                    messageId = currentUserMessageId,
+                    errorMessage = event.error?.message ?: "Stream error",
+                )
             }
 
             FireBoxStreamEvent.Type.CANCELLED -> {
-                _uiState.update { it.copy(isLoading = false) }
+                val streamingId = currentStreamingMessageId
+                _uiState.update { state ->
+                    state.copy(
+                        conversations = state.conversations.map { conv ->
+                            if (conv.id == conversationId) {
+                                conv.copy(messages = conv.messages.filterNot { it.id == streamingId })
+                            } else {
+                                conv
+                            }
+                        },
+                        isLoading = false,
+                    )
+                }
                 currentStreamingMessageId = null
+                currentUserMessageId = null
             }
 
             else -> {}
@@ -316,35 +472,77 @@ class ChatViewModel(
         viewModelScope.launch { repository.save(conv) }
     }
 
+    private fun handleMessageFailure(
+        conversationId: String,
+        messageId: Long?,
+        errorMessage: String,
+    ) {
+        val streamingId = currentStreamingMessageId
+        _uiState.update { state ->
+            state.copy(
+                conversations = state.conversations.map { conv ->
+                    if (conv.id == conversationId) {
+                        conv.copy(
+                            messages =
+                                conv.messages
+                                    .filterNot { it.id == streamingId }
+                                    .map { msg ->
+                                        if (msg.id == messageId) {
+                                            msg.copy(errorMessage = errorMessage)
+                                        } else {
+                                            msg
+                                        }
+                                    },
+                        )
+                    } else {
+                        conv
+                    }
+                },
+                isLoading = false,
+                error = errorMessage,
+            )
+        }
+        currentStreamingMessageId = null
+        currentUserMessageId = null
+        persistConversation(conversationId)
+    }
+
     private fun generateTitle(conversationId: String) {
         val state = _uiState.value
-        val model = state.selectedModel ?: return
         val conv = state.conversations.firstOrNull { it.id == conversationId } ?: return
         if (conv.title != "New conversation") return
 
         val snippet = conv.messages.joinToString("\n") { "${it.role}: ${it.content}" }
             .take(500)
+        if (snippet.isBlank()) return
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val titleRequest = FireBoxChatRequest(
-                    virtualModelId = model,
-                    messages = listOf(
-                        FireBoxMessage(
-                            role = "user",
-                            content = "Generate a short title (under 30 chars) for this conversation. Reply with ONLY the title, no quotes or extra text. Use the same language as the conversation.\n\n$snippet",
-                        ),
-                    ),
-                    maxOutputTokens = 64,
-                )
-                val sb = StringBuilder()
-                client.streamChat(titleRequest).collect { event ->
-                    if (event.type == FireBoxStreamEvent.Type.DELTA) {
-                        sb.append(event.deltaText.orEmpty())
+                val result =
+                    client.callFunction<TitleInput, TitleOutput>(
+                        virtualModelId = QUICK_TOOL_VIRTUAL_MODEL_ID,
+                        name = "generate_conversation_title",
+                        description =
+                            "Generate a concise conversation title in the same language as the conversation. " +
+                                "Return plain title text in the title field, under 30 characters, with no quotes.",
+                        input = TitleInput(conversation = snippet),
+                        temperature = 0.2f,
+                        maxOutputTokens = 256,
+                    )
+                result.error?.let { error ->
+                    Log.w("ChatViewModel", "Title generation failed: ${error.message}")
+                    _uiState.update { s ->
+                        s.copy(error = "Title generation failed: ${error.message}")
                     }
+                    return@launch
                 }
-                val title = sb.toString().trim().take(40)
-                if (title.isBlank()) return@launch
+                val title = result.response?.output?.title.orEmpty().trim().take(40)
+                if (title.isBlank()) {
+                    _uiState.update { s ->
+                        s.copy(error = "Title generation failed: model returned an empty title")
+                    }
+                    return@launch
+                }
                 _uiState.update { s ->
                     s.copy(
                         conversations = s.conversations.map { c ->
@@ -355,7 +553,68 @@ class ChatViewModel(
                 persistConversation(conversationId)
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Title generation failed", e)
+                _uiState.update { s ->
+                    s.copy(error = "Title generation failed: ${e.message ?: "unknown error"}")
+                }
             }
         }
+    }
+
+    private fun ChatUiMessage.toClientMessage(): FireBoxMessage? {
+        val mappedAttachments =
+            attachments.mapNotNull { attachment ->
+                val file = java.io.File(attachment.filePath)
+                if (!file.exists()) {
+                    Log.w("ChatViewModel", "Attachment missing: ${attachment.filePath}")
+                    return@mapNotNull null
+                }
+                FireBoxMessageAttachment(
+                    mediaFormat =
+                        when (attachment.mediaFormat) {
+                            "image" -> FireBoxMediaFormat.Image
+                            "video" -> FireBoxMediaFormat.Video
+                            "audio" -> FireBoxMediaFormat.Audio
+                            else -> FireBoxMediaFormat.Image
+                        },
+                    mimeType = attachment.mimeType,
+                    filePath = attachment.filePath,
+                    fileName = attachment.fileName,
+                    sizeBytes = file.length(),
+                )
+            }
+        return FireBoxMessage(
+            role = role,
+            content = content,
+            attachments = mappedAttachments,
+        )
+    }
+
+    private data class RetryTarget(
+        val userMessageId: Long,
+    )
+
+    private fun Conversation.resolveRetryTarget(messageId: Long): RetryTarget? {
+        val selectedIndex = messages.indexOfFirst { it.id == messageId }
+        if (selectedIndex < 0) return null
+        val userMessage =
+            messages
+                .take(selectedIndex + 1)
+                .lastOrNull { it.role == "user" }
+                ?: return null
+        return RetryTarget(userMessageId = userMessage.id)
+    }
+
+    private fun Conversation.trimmedForRetry(userMessageId: Long): List<ChatUiMessage>? {
+        val targetIndex = messages.indexOfFirst { it.id == userMessageId }
+        if (targetIndex < 0) return null
+        return messages
+            .take(targetIndex + 1)
+            .map { message ->
+                if (message.id == userMessageId) {
+                    message.copy(errorMessage = null)
+                } else {
+                    message
+                }
+            }
     }
 }

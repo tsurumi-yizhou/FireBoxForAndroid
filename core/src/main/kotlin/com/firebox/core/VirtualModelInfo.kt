@@ -7,6 +7,7 @@ import kotlinx.parcelize.Parcelize
 data class VirtualModelInfo(
     val virtualModelId: String,
     val strategy: String,
+    val capabilities: ModelCapabilities = ModelCapabilities(),
     val candidates: List<ModelCandidateInfo>,
     val available: Boolean,
 ) : Parcelable

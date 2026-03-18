@@ -66,6 +66,39 @@ class SyncResultParcelableTest {
         assertNull(restored.error)
     }
 
+    @Test
+    fun virtualModelInfo_roundTripsThroughParcel() {
+        val info =
+            VirtualModelInfo(
+                virtualModelId = "chat-default",
+                strategy = "Failover",
+                capabilities =
+                    ModelCapabilities(
+                        reasoning = true,
+                        toolCalling = true,
+                        inputFormats = listOf(ModelMediaFormat.Image, ModelMediaFormat.Audio),
+                        outputFormats = listOf(ModelMediaFormat.Video),
+                    ),
+                candidates =
+                    listOf(
+                        ModelCandidateInfo(
+                            providerId = 1,
+                            providerType = "OpenAI",
+                            providerName = "Primary",
+                            baseUrl = "https://example.com",
+                            modelId = "gpt-4.1",
+                            enabledInConfig = true,
+                            capabilitySupported = true,
+                        ),
+                    ),
+                available = true,
+            )
+
+        val restored = parcelRoundTrip(info)
+
+        assertEquals(info, restored)
+    }
+
     private inline fun <reified T : Parcelable> parcelRoundTrip(value: T): T {
         val parcel = Parcel.obtain()
         return try {

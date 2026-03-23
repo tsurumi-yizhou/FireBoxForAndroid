@@ -177,7 +177,7 @@ private fun AllowlistClientCard(entry: AllowlistClientEntry) {
             if (entry.hasHistory) add(historyText)
         }.joinToString(" | ")
 
-    OutlinedCard(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
     ) {

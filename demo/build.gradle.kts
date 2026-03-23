@@ -59,6 +59,8 @@ dependencies {
     implementation("androidx.compose.material3.adaptive:adaptive:1.3.0-alpha09")
     implementation("androidx.compose.material3.adaptive:adaptive-layout:1.3.0-alpha09")
     implementation("androidx.compose.material3.adaptive:adaptive-navigation:1.3.0-alpha09")
+    implementation("androidx.navigation3:navigation3-runtime:1.0.1")
+    implementation("androidx.navigation3:navigation3-ui:1.0.1")
 
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")

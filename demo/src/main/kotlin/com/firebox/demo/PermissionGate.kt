@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,19 +53,29 @@ fun PermissionGate(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = "FireBox needs your permission to use AI capabilities.",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Button(
-                onClick = { launcher.launch(permission) },
-                modifier = Modifier.padding(top = 16.dp),
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
-                Text("Grant Permission")
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "FireBox needs your permission to use AI capabilities.",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Button(
+                        onClick = { launcher.launch(permission) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) {
+                        Text("Grant Permission")
+                    }
+                }
             }
         }
     }

@@ -147,7 +147,7 @@ fun ConnectionItem(
             stringResource(R.string.connections_status_warning)
         }
 
-    OutlinedCard(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
     ) {

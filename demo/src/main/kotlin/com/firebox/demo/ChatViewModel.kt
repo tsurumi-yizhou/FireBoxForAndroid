@@ -10,6 +10,8 @@ import com.firebox.client.model.FireBoxMessageAttachment
 import com.firebox.client.model.FireBoxModelInfo
 import com.firebox.client.model.FireBoxStreamEvent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +21,8 @@ import kotlinx.serialization.Serializable
 import java.util.UUID
 
 private const val QUICK_TOOL_VIRTUAL_MODEL_ID = "__quick_tool__"
+private const val MODEL_LOAD_MAX_ATTEMPTS = 6
+private const val MODEL_LOAD_RETRY_DELAY_MS = 500L
 
 @Serializable
 private data class TitleInput(val conversation: String)
@@ -77,6 +81,7 @@ class ChatViewModel(
     private var messageIdCounter = 0L
     private var currentStreamingMessageId: Long? = null
     private var currentUserMessageId: Long? = null
+    private var loadModelsJob: Job? = null
 
     init {
         client.addConnectionListener(object : FireBoxClient.ConnectionListener {
@@ -112,13 +117,37 @@ class ChatViewModel(
     }
 
     private fun loadAvailableModels() {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val models = client.listModels()
-                Log.d("ChatViewModel", "listModels returned: $models")
-                if (models != null) {
-                    val availableModels = models.filter { it.available }
-                    Log.d("ChatViewModel", "Available model IDs: ${availableModels.map { it.virtualModelId }}")
+        loadModelsJob?.cancel()
+        loadModelsJob =
+            viewModelScope.launch(Dispatchers.IO) {
+                var availableModels: List<FireBoxModelInfo> = emptyList()
+                var resolved = false
+
+                for (attempt in 0 until MODEL_LOAD_MAX_ATTEMPTS) {
+                    try {
+                        val models = client.listModels()
+                        Log.d("ChatViewModel", "listModels returned: $models (attempt=${attempt + 1})")
+                        if (models != null) {
+                            availableModels = models.filter { it.available }
+                            Log.d("ChatViewModel", "Available model IDs: ${availableModels.map { it.virtualModelId }}")
+
+                            // FireBox service snapshot may still be warming up right after connection.
+                            // Retry a few times before concluding there are no available models.
+                            if (availableModels.isNotEmpty() || attempt == MODEL_LOAD_MAX_ATTEMPTS - 1) {
+                                resolved = true
+                                break
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ChatViewModel", "Failed to load models (attempt=${attempt + 1})", e)
+                    }
+
+                    if (attempt < MODEL_LOAD_MAX_ATTEMPTS - 1) {
+                        delay(MODEL_LOAD_RETRY_DELAY_MS)
+                    }
+                }
+
+                if (resolved) {
                     _uiState.update { state ->
                         val selectedModel =
                             state.selectedModel?.takeIf { current ->
@@ -133,11 +162,7 @@ class ChatViewModel(
                 } else {
                     _uiState.update { it.copy(modelsLoaded = true) }
                 }
-            } catch (e: Exception) {
-                Log.e("ChatViewModel", "Failed to load models", e)
-                _uiState.update { it.copy(modelsLoaded = true) }
             }
-        }
     }
 
     fun refreshModels() {

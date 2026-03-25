@@ -86,6 +86,7 @@ import androidx.window.core.layout.WindowSizeClass
 import com.firebox.client.FireBoxClient
 import com.firebox.client.model.FireBoxMediaFormat
 import com.firebox.client.model.FireBoxModelInfo
+import com.firebox.client.model.FireBoxReasoningEffort
 import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.m3.Markdown
 import java.io.File
@@ -154,6 +155,7 @@ fun ChatScreen() {
             onDeleteMessage = viewModel::deleteMessage,
             onToggleReasoning = viewModel::toggleReasoning,
             onSelectModel = viewModel::selectModel,
+            onSelectReasoningEffort = viewModel::selectReasoningEffort,
             onRefreshModels = viewModel::refreshModels,
             onDismissError = viewModel::dismissError,
             showMenuButton = showMenuButton,
@@ -218,6 +220,7 @@ private fun ChatDetailPane(
     onDeleteMessage: (Long) -> Unit,
     onToggleReasoning: (Long) -> Unit,
     onSelectModel: (String) -> Unit,
+    onSelectReasoningEffort: (FireBoxReasoningEffort?) -> Unit,
     onRefreshModels: () -> Unit,
     onDismissError: () -> Unit,
     showMenuButton: Boolean,
@@ -304,8 +307,11 @@ private fun ChatDetailPane(
                     selectedModel = uiState.selectedModel,
                     availableModels = uiState.availableModels,
                     supportsImageInput = supportsImageInput,
+                    supportsReasoning = uiState.selectedModelInfo?.capabilities?.reasoning == true,
+                    selectedReasoningEffort = uiState.selectedReasoningEffort,
                     messageCount = uiState.messages.size,
                     onModelSelected = onSelectModel,
+                    onReasoningEffortSelected = onSelectReasoningEffort,
                     enabled = uiState.isConnected && !uiState.isLoading,
                     modelsLoaded = uiState.modelsLoaded,
                 )
@@ -377,8 +383,11 @@ private fun ChatContextBar(
     selectedModel: String?,
     availableModels: List<FireBoxModelInfo>,
     supportsImageInput: Boolean,
+    supportsReasoning: Boolean,
+    selectedReasoningEffort: FireBoxReasoningEffort?,
     messageCount: Int,
     onModelSelected: (String) -> Unit,
+    onReasoningEffortSelected: (FireBoxReasoningEffort?) -> Unit,
     enabled: Boolean,
     modelsLoaded: Boolean,
 ) {
@@ -397,17 +406,30 @@ private fun ChatContextBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ModelSelector(
-                selectedModel = selectedModel,
-                availableModels = availableModels,
-                onModelSelected = onModelSelected,
-                enabled = enabled,
-                modelsLoaded = modelsLoaded,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ModelSelector(
+                    selectedModel = selectedModel,
+                    availableModels = availableModels,
+                    onModelSelected = onModelSelected,
+                    enabled = enabled,
+                    modelsLoaded = modelsLoaded,
+                )
+
+                if (supportsReasoning) {
+                    ReasoningEffortSelector(
+                        selected = selectedReasoningEffort,
+                        onSelected = onReasoningEffortSelected,
+                        enabled = enabled,
+                    )
+                }
+            }
 
             Text(
                 text = if (supportsImageInput) {
-                    "$messageCount messages  •  image input on"
+                    "$messageCount messages  \u2022  image input on"
                 } else {
                     "$messageCount messages"
                 },
@@ -471,6 +493,56 @@ private fun ModelSelector(
                     text = { Text(model.virtualModelId) },
                     onClick = {
                         onModelSelected(model.virtualModelId)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReasoningEffortSelector(
+    selected: FireBoxReasoningEffort?,
+    onSelected: (FireBoxReasoningEffort?) -> Unit,
+    enabled: Boolean,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = selected?.name ?: "Thinking"
+
+    Box {
+        OutlinedButton(
+            onClick = { expanded = true },
+            enabled = enabled,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Default") },
+                onClick = {
+                    onSelected(null)
+                    expanded = false
+                },
+            )
+            FireBoxReasoningEffort.entries.forEach { effort ->
+                DropdownMenuItem(
+                    text = { Text(effort.name) },
+                    onClick = {
+                        onSelected(effort)
                         expanded = false
                     },
                 )

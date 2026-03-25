@@ -22,6 +22,7 @@ data class FireBoxChatRequest(
     val messages: List<FireBoxMessage>,
     val temperature: Float = -1f,
     val maxOutputTokens: Int = -1,
+    val reasoningEffort: FireBoxReasoningEffort? = null,
 )
 
 data class FireBoxProviderSelection(

@@ -568,6 +568,7 @@ private fun prepareChatRequest(
         temperature = request.temperature,
         maxOutputTokens = request.maxOutputTokens,
         reasoningEnabled = route.capabilities.reasoning,
+        reasoningEffort = request.reasoningEffort,
     )
 
 private fun prepareChatAttachment(attachment: com.firebox.core.ChatAttachment): ProviderChatAttachment {

@@ -8,6 +8,7 @@ import com.firebox.client.model.FireBoxChatRequest
 import com.firebox.client.model.FireBoxMessage
 import com.firebox.client.model.FireBoxMessageAttachment
 import com.firebox.client.model.FireBoxModelInfo
+import com.firebox.client.model.FireBoxReasoningEffort
 import com.firebox.client.model.FireBoxStreamEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +59,7 @@ data class ChatUiState(
     val error: String? = null,
     val availableModels: List<FireBoxModelInfo> = emptyList(),
     val selectedModel: String? = null,
+    val selectedReasoningEffort: FireBoxReasoningEffort? = null,
     val modelsLoaded: Boolean = false,
 ) {
     val activeConversation: Conversation?
@@ -172,6 +174,10 @@ class ChatViewModel(
 
     fun selectModel(modelId: String) {
         _uiState.update { it.copy(selectedModel = modelId) }
+    }
+
+    fun selectReasoningEffort(effort: FireBoxReasoningEffort?) {
+        _uiState.update { it.copy(selectedReasoningEffort = effort) }
     }
 
     fun dismissError() {
@@ -331,6 +337,7 @@ class ChatViewModel(
         val request = FireBoxChatRequest(
             virtualModelId = model,
             messages = allMessages,
+            reasoningEffort = _uiState.value.selectedReasoningEffort,
         )
         currentUserMessageId = messageId
 

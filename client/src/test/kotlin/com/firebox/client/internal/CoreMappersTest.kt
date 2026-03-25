@@ -1,6 +1,9 @@
 package com.firebox.client.internal
 
 import com.firebox.client.model.FireBoxFunctionSpec
+import com.firebox.client.model.FireBoxMessage
+import com.firebox.client.model.FireBoxChatRequest
+import com.firebox.client.model.FireBoxReasoningEffort
 import com.firebox.client.model.FireBoxSdkError
 import com.firebox.core.ChatCompletionResponse
 import com.firebox.core.ChatCompletionResult
@@ -27,6 +30,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoreMappersTest {
+    @Test
+    fun chatRequest_mapsReasoningEffortToCore() {
+        val request =
+            FireBoxChatRequest(
+                virtualModelId = "chat-default",
+                messages = listOf(FireBoxMessage(role = "user", content = "hello")),
+                reasoningEffort = FireBoxReasoningEffort.High,
+            )
+
+        val mapped = request.toCore()
+
+        assertEquals(com.firebox.core.ReasoningEffort.High, mapped.reasoningEffort)
+    }
+
     @Test
     fun chatCompletionResult_mapsStructuredErrorToClient() {
         val result =

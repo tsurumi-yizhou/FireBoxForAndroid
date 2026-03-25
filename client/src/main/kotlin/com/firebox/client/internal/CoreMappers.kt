@@ -4,6 +4,7 @@ import android.os.ParcelFileDescriptor
 import com.firebox.client.model.FireBoxChatRequest
 import com.firebox.client.model.FireBoxChatResponse
 import com.firebox.client.model.FireBoxChatResult
+import com.firebox.client.model.FireBoxReasoningEffort
 import com.firebox.client.model.FireBoxEmbedding
 import com.firebox.client.model.FireBoxEmbeddingRequest
 import com.firebox.client.model.FireBoxEmbeddingResponse
@@ -39,6 +40,7 @@ import com.firebox.core.ModelCandidateInfo
 import com.firebox.core.ModelCapabilities
 import com.firebox.core.ModelMediaFormat
 import com.firebox.core.ProviderSelection
+import com.firebox.core.ReasoningEffort
 import com.firebox.core.Usage
 import com.firebox.core.VirtualModelInfo
 import java.io.File
@@ -50,6 +52,7 @@ internal fun FireBoxChatRequest.toCore(): ChatCompletionRequest =
         messages = messages.map(FireBoxMessage::toCore),
         temperature = temperature,
         maxOutputTokens = maxOutputTokens,
+        reasoningEffort = reasoningEffort?.toCore(),
     )
 
 internal fun FireBoxEmbeddingRequest.toCore(): EmbeddingRequest =
@@ -120,6 +123,13 @@ private fun FireBoxMediaFormat.toCore(): ModelMediaFormat =
         FireBoxMediaFormat.Image -> ModelMediaFormat.Image
         FireBoxMediaFormat.Video -> ModelMediaFormat.Video
         FireBoxMediaFormat.Audio -> ModelMediaFormat.Audio
+    }
+
+private fun FireBoxReasoningEffort.toCore(): ReasoningEffort =
+    when (this) {
+        FireBoxReasoningEffort.Low -> ReasoningEffort.Low
+        FireBoxReasoningEffort.Medium -> ReasoningEffort.Medium
+        FireBoxReasoningEffort.High -> ReasoningEffort.High
     }
 
 private fun ModelCandidateInfo.toClient(): FireBoxModelCandidateInfo =

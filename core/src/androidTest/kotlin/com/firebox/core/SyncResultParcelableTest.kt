@@ -11,6 +11,22 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SyncResultParcelableTest {
     @Test
+    fun chatCompletionRequest_roundTripsThroughParcel() {
+        val request =
+            ChatCompletionRequest(
+                virtualModelId = "chat-default",
+                messages = listOf(ChatMessage(role = "user", content = "hello")),
+                temperature = 0.3f,
+                maxOutputTokens = 256,
+                reasoningEffort = ReasoningEffort.High,
+            )
+
+        val restored = parcelRoundTrip(request)
+
+        assertEquals(request, restored)
+    }
+
+    @Test
     fun chatCompletionResult_roundTripsThroughParcel() {
         val result =
             ChatCompletionResult(

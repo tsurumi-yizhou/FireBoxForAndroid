@@ -25,6 +25,7 @@ import com.firebox.core.EmbeddingRequest
 import com.firebox.core.FireBoxError
 import com.firebox.core.FunctionCallRequest
 import com.firebox.core.ModelMediaFormat
+import com.firebox.core.ReasoningEffort
 import com.firebox.core.Usage
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.json.JsonMapper
@@ -39,6 +40,7 @@ import com.google.genai.types.GenerateContentResponseUsageMetadata
 import com.google.genai.types.HttpOptions
 import com.google.genai.types.Part
 import com.google.genai.types.ThinkingConfig
+import com.google.genai.types.ThinkingLevel
 import com.google.genai.types.ToolConfig
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -167,6 +169,9 @@ internal class FireBoxProviderGateway {
                 if (request.maxOutputTokens > 0) {
                     put("max_tokens", request.maxOutputTokens)
                 }
+                if (request.reasoningEnabled) {
+                    request.reasoningEffort?.let { put("reasoning_effort", it.toOpenAiWireValue()) }
+                }
             }
 
         val response = postJson(
@@ -214,6 +219,9 @@ internal class FireBoxProviderGateway {
                 }
                 if (request.maxOutputTokens > 0) {
                     put("max_tokens", request.maxOutputTokens)
+                }
+                if (request.reasoningEnabled) {
+                    request.reasoningEffort?.let { put("reasoning_effort", it.toOpenAiWireValue()) }
                 }
             }
 
@@ -484,13 +492,7 @@ internal class FireBoxProviderGateway {
             builder.temperature(request.temperature.toDouble())
         }
         if (request.reasoningEnabled) {
-            val budget =
-                request.maxOutputTokens
-                    .takeIf { it > 0 }
-                    ?.coerceAtMost(2048)
-                    ?.coerceAtLeast(1024)
-                    ?: 1024
-            builder.enabledThinking(budget.toLong())
+            builder.enabledThinking(request.anthropicThinkingBudget())
         }
 
         val systemText = request.messages.filter { it.role == "system" }.joinToString("\n\n") { it.content }
@@ -614,11 +616,13 @@ internal class FireBoxProviderGateway {
             builder.maxOutputTokens(request.maxOutputTokens)
         }
         if (request.reasoningEnabled) {
-            builder.thinkingConfig(
+            val thinkingConfig =
                 ThinkingConfig.builder()
                     .includeThoughts(true)
-                    .build(),
-            )
+                    .apply {
+                        request.reasoningEffort?.let { thinkingLevel(it.toGeminiThinkingLevel()) }
+                    }.build()
+            builder.thinkingConfig(thinkingConfig)
         }
         val systemText = request.messages.filter { it.role == "system" }.joinToString("\n\n") { it.content }
         if (systemText.isNotBlank()) {
@@ -816,7 +820,7 @@ internal class FireBoxProviderGateway {
             if (request.reasoningEnabled) {
                 putJsonObject("thinking") {
                     put("type", "enabled")
-                    put("budget_tokens", request.maxOutputTokens.takeIf { it > 0 }?.coerceAtMost(2048)?.coerceAtLeast(1024) ?: 1024)
+                    put("budget_tokens", request.anthropicThinkingBudget())
                 }
             }
             if (systemText.isNotBlank()) {
@@ -1626,6 +1630,7 @@ internal data class ProviderChatRequest(
     val temperature: Float = -1f,
     val maxOutputTokens: Int = -1,
     val reasoningEnabled: Boolean = false,
+    val reasoningEffort: ReasoningEffort? = null,
 )
 
 internal data class ProviderChatMessage(
@@ -1662,3 +1667,31 @@ internal data class ProviderFunctionResult(
 internal class FireBoxServiceException(
     val error: FireBoxError,
 ) : Exception(error.message)
+
+private fun ProviderChatRequest.anthropicThinkingBudget(): Long =
+    when (reasoningEffort) {
+        ReasoningEffort.Low -> 1024L
+        ReasoningEffort.Medium -> 2048L
+        ReasoningEffort.High -> 4096L
+        null ->
+            maxOutputTokens
+                .takeIf { it > 0 }
+                ?.coerceAtMost(2048)
+                ?.coerceAtLeast(1024)
+                ?.toLong()
+                ?: 1024L
+    }
+
+private fun ReasoningEffort.toGeminiThinkingLevel(): ThinkingLevel.Known =
+    when (this) {
+        ReasoningEffort.Low -> ThinkingLevel.Known.LOW
+        ReasoningEffort.Medium -> ThinkingLevel.Known.MEDIUM
+        ReasoningEffort.High -> ThinkingLevel.Known.HIGH
+    }
+
+private fun ReasoningEffort.toOpenAiWireValue(): String =
+    when (this) {
+        ReasoningEffort.Low -> "low"
+        ReasoningEffort.Medium -> "medium"
+        ReasoningEffort.High -> "high"
+    }

@@ -513,11 +513,13 @@ private fun SettingsIndexRow(
         if (selected) {
             MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
         } else {
-            MaterialTheme.colorScheme.surface
+            MaterialTheme.colorScheme.surfaceContainerLow
         }
-    Surface(
-        color = containerColor,
+    Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = containerColor),
     ) {
         SettingsRowLayout(
             title = title,
@@ -530,10 +532,6 @@ private fun SettingsIndexRow(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             },
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onClick),
         )
     }
 }
@@ -545,35 +543,40 @@ private fun ProviderListRow(
     onDelete: () -> Unit,
     onManageModels: () -> Unit,
 ) {
-    SettingsRowLayout(
-        title = provider.name.ifBlank { stringResource(R.string.config_unnamed_provider) },
-        summary =
-            "${provider.type.displayName} · ${
-                stringResource(
-                    R.string.config_provider_enabled_models_count,
-                    provider.enabledModels.size,
-                )
-            }\n${provider.baseUrl.ifBlank { stringResource(R.string.common_placeholder_dash) }}",
-        leading = { SettingsIconBadge(icon = Icons.Default.Cloud) },
-        trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.config_delete_provider_cd),
-                        tint = MaterialTheme.colorScheme.error,
+    Card(
+        onClick = onManageModels,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        SettingsRowLayout(
+            title = provider.name.ifBlank { stringResource(R.string.config_unnamed_provider) },
+            summary =
+                "${provider.type.displayName} · ${
+                    stringResource(
+                        R.string.config_provider_enabled_models_count,
+                        provider.enabledModels.size,
                     )
+                }\n${provider.baseUrl.ifBlank { stringResource(R.string.common_placeholder_dash) }}",
+            leading = { SettingsIconBadge(icon = Icons.Default.Cloud) },
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.config_delete_provider_cd),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
-            }
-        },
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onManageModels),
-    )
+            },
+        )
+    }
 }
 
 @Composable
@@ -601,38 +604,51 @@ private fun RouteListRow(
                 append(capabilitySummary)
             }
         }
-    SettingsRowLayout(
-        title = rule.virtualModelId.ifBlank { stringResource(R.string.route_virtual_model_rule) },
-        summary = summary,
-        leading = { SettingsIconBadge(icon = Icons.Default.Route) },
-        trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
+    Card(
+        onClick = onEdit,
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        SettingsRowLayout(
+            title = rule.virtualModelId.ifBlank { stringResource(R.string.route_virtual_model_rule) },
+            summary = summary,
+            leading = { SettingsIconBadge(icon = Icons.Default.Route) },
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.common_edit))
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.route_delete_rule_cd),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.route_delete_rule_cd),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        },
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onEdit),
-    )
+            },
+        )
+    }
 }
 
 @Composable
 private fun SettingsEmptyRow(text: String) {
-    SettingsRowLayout(
-        title = text,
-        summary = "",
-        leading = { SettingsIconBadge(icon = Icons.Default.Info) },
-    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        SettingsRowLayout(
+            title = text,
+            summary = "",
+            leading = { SettingsIconBadge(icon = Icons.Default.Info) },
+        )
+    }
 }
 
 @Composable
@@ -641,11 +657,19 @@ private fun AboutInfoRow(
     summary: String,
     icon: ImageVector,
 ) {
-    SettingsRowLayout(
-        title = title,
-        summary = summary,
-        leading = { SettingsIconBadge(icon = icon) },
-    )
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        SettingsRowLayout(
+            title = title,
+            summary = summary,
+            leading = { SettingsIconBadge(icon = icon) },
+        )
+    }
 }
 
 @Composable
@@ -1626,39 +1650,40 @@ private fun ConfigurationListPane(
 
     SettingsLazyPage(maxWidth = 560.dp) {
         item {
-            SettingsGroupSurface {
-                SettingsIndexRow(
-                    title = stringResource(R.string.config_section_general),
-                    summary = quickToolSummary.ifBlank { stringResource(R.string.config_section_general_summary) },
-                    icon = Icons.Default.Tune,
-                    selected = selectedRootKey == SettingsKeyGeneral,
-                    onClick = { onOpenDestination(SettingsKeyGeneral) },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsIndexRow(
-                    title = stringResource(R.string.config_section_provider),
-                    summary = stringResource(R.string.config_about_provider_count_value, providers.size),
-                    icon = Icons.Default.Cloud,
-                    selected = selectedRootKey == SettingsKeyProviders,
-                    onClick = { onOpenDestination(SettingsKeyProviders) },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsIndexRow(
-                    title = stringResource(R.string.config_section_route),
-                    summary = stringResource(R.string.config_about_route_count_value, routes.size),
-                    icon = Icons.Default.Route,
-                    selected = selectedRootKey == SettingsKeyRoutes,
-                    onClick = { onOpenDestination(SettingsKeyRoutes) },
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsIndexRow(
-                    title = stringResource(R.string.config_section_about),
-                    summary = versionName.ifBlank { stringResource(R.string.config_section_about_summary) },
-                    icon = Icons.Default.Info,
-                    selected = selectedRootKey == SettingsKeyAbout,
-                    onClick = { onOpenDestination(SettingsKeyAbout) },
-                )
-            }
+            SettingsIndexRow(
+                title = stringResource(R.string.config_section_general),
+                summary = quickToolSummary.ifBlank { stringResource(R.string.config_section_general_summary) },
+                icon = Icons.Default.Tune,
+                selected = selectedRootKey == SettingsKeyGeneral,
+                onClick = { onOpenDestination(SettingsKeyGeneral) },
+            )
+        }
+        item {
+            SettingsIndexRow(
+                title = stringResource(R.string.config_section_provider),
+                summary = stringResource(R.string.config_about_provider_count_value, providers.size),
+                icon = Icons.Default.Cloud,
+                selected = selectedRootKey == SettingsKeyProviders,
+                onClick = { onOpenDestination(SettingsKeyProviders) },
+            )
+        }
+        item {
+            SettingsIndexRow(
+                title = stringResource(R.string.config_section_route),
+                summary = stringResource(R.string.config_about_route_count_value, routes.size),
+                icon = Icons.Default.Route,
+                selected = selectedRootKey == SettingsKeyRoutes,
+                onClick = { onOpenDestination(SettingsKeyRoutes) },
+            )
+        }
+        item {
+            SettingsIndexRow(
+                title = stringResource(R.string.config_section_about),
+                summary = versionName.ifBlank { stringResource(R.string.config_section_about_summary) },
+                icon = Icons.Default.Info,
+                selected = selectedRootKey == SettingsKeyAbout,
+                onClick = { onOpenDestination(SettingsKeyAbout) },
+            )
         }
     }
 }
@@ -1693,7 +1718,6 @@ private fun SettingsDetailPlaceholder(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Text(
                     text = stringResource(R.string.config_about_provider_count_value, providerCount),
                     style = MaterialTheme.typography.bodyMedium,
@@ -1747,31 +1771,32 @@ private fun AboutSettingsPane(
         headerSummary = if (showHeader) stringResource(R.string.config_section_about_summary) else null,
     ) {
         item {
-            SettingsGroupSurface {
-                AboutInfoRow(
-                    title = stringResource(R.string.config_about_version),
-                    summary = versionName.ifBlank { stringResource(R.string.common_placeholder_dash) },
-                    icon = Icons.Default.Info,
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                AboutInfoRow(
-                    title = stringResource(R.string.config_about_package),
-                    summary = packageName,
-                    icon = Icons.Default.Android,
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                AboutInfoRow(
-                    title = stringResource(R.string.config_about_provider_count),
-                    summary = stringResource(R.string.config_about_provider_count_value, providerCount),
-                    icon = Icons.Default.Cloud,
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                AboutInfoRow(
-                    title = stringResource(R.string.config_about_route_count),
-                    summary = stringResource(R.string.config_about_route_count_value, routeCount),
-                    icon = Icons.Default.Route,
-                )
-            }
+            AboutInfoRow(
+                title = stringResource(R.string.config_about_version),
+                summary = versionName.ifBlank { stringResource(R.string.common_placeholder_dash) },
+                icon = Icons.Default.Info,
+            )
+        }
+        item {
+            AboutInfoRow(
+                title = stringResource(R.string.config_about_package),
+                summary = packageName,
+                icon = Icons.Default.Android,
+            )
+        }
+        item {
+            AboutInfoRow(
+                title = stringResource(R.string.config_about_provider_count),
+                summary = stringResource(R.string.config_about_provider_count_value, providerCount),
+                icon = Icons.Default.Cloud,
+            )
+        }
+        item {
+            AboutInfoRow(
+                title = stringResource(R.string.config_about_route_count),
+                summary = stringResource(R.string.config_about_route_count_value, routeCount),
+                icon = Icons.Default.Route,
+            )
         }
     }
 }
@@ -1799,23 +1824,18 @@ private fun ProviderSettingsPane(
                 Text(stringResource(R.string.config_add_provider))
             }
         }
-        item {
-            SettingsGroupSurface {
-                if (providers.isEmpty()) {
-                    SettingsEmptyRow(text = stringResource(R.string.config_empty_provider))
-                } else {
-                    providers.forEachIndexed { index, provider ->
-                        if (index > 0) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-                        ProviderListRow(
-                            provider = provider,
-                            onEdit = { onEdit(provider) },
-                            onDelete = { onDelete(provider.id) },
-                            onManageModels = { onManageModels(provider.id) },
-                        )
-                    }
-                }
+        if (providers.isEmpty()) {
+            item {
+                SettingsEmptyRow(text = stringResource(R.string.config_empty_provider))
+            }
+        } else {
+            items(providers, key = { it.id }) { provider ->
+                ProviderListRow(
+                    provider = provider,
+                    onEdit = { onEdit(provider) },
+                    onDelete = { onDelete(provider.id) },
+                    onManageModels = { onManageModels(provider.id) },
+                )
             }
         }
     }
@@ -1843,22 +1863,17 @@ private fun RouteSettingsPane(
                 Text(stringResource(R.string.route_add_rule))
             }
         }
-        item {
-            SettingsGroupSurface {
-                if (routes.isEmpty()) {
-                    SettingsEmptyRow(text = stringResource(R.string.route_empty_rule))
-                } else {
-                    routes.forEachIndexed { index, rule ->
-                        if (index > 0) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-                        RouteListRow(
-                            rule = rule,
-                            onEdit = { onEdit(rule) },
-                            onDelete = { onDelete(rule.id) },
-                        )
-                    }
-                }
+        if (routes.isEmpty()) {
+            item {
+                SettingsEmptyRow(text = stringResource(R.string.route_empty_rule))
+            }
+        } else {
+            items(routes, key = { it.id }) { rule ->
+                RouteListRow(
+                    rule = rule,
+                    onEdit = { onEdit(rule) },
+                    onDelete = { onDelete(rule.id) },
+                )
             }
         }
     }
@@ -1892,7 +1907,6 @@ private fun QuickToolModelCard(
                     stringResource(R.string.config_quick_tool_model_unset)
                 },
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Column(
             modifier = Modifier
                 .fillMaxWidth()

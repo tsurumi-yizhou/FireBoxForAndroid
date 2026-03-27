@@ -23,6 +23,18 @@ interface DailyUsageDao {
     )
     fun observeAggregate(fromDate: String, toDate: String): Flow<UsageAggregate?>
 
+    @Query(
+        """
+        SELECT 
+          SUM(requests) AS requests,
+          SUM(tokens) AS tokens,
+          SUM(price_usd_micros) AS price_usd_micros
+        FROM daily_usage
+        WHERE date >= :fromDate AND date <= :toDate
+        """
+    )
+    suspend fun getAggregate(fromDate: String, toDate: String): UsageAggregate?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: DailyUsageEntity)
 
@@ -45,4 +57,3 @@ interface DailyUsageDao {
         updatedAtMs: Long,
     ): Int
 }
-

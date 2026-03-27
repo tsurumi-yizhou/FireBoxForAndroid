@@ -18,18 +18,11 @@ data class FireBoxMessage(
 )
 
 data class FireBoxChatRequest(
-    val virtualModelId: String,
+    val modelId: String,
     val messages: List<FireBoxMessage>,
     val temperature: Float = -1f,
     val maxOutputTokens: Int = -1,
     val reasoningEffort: FireBoxReasoningEffort? = null,
-)
-
-data class FireBoxProviderSelection(
-    val providerId: Int,
-    val providerType: String,
-    val providerName: String,
-    val modelId: String,
 )
 
 data class FireBoxUsage(
@@ -39,17 +32,16 @@ data class FireBoxUsage(
 )
 
 data class FireBoxChatResponse(
-    val virtualModelId: String,
+    val modelId: String,
     val message: FireBoxMessage,
     val reasoningText: String?,
-    val selection: FireBoxProviderSelection,
     val usage: FireBoxUsage,
     val finishReason: String,
 )
 
 data class FireBoxChatResult(
     val response: FireBoxChatResponse?,
-    val error: FireBoxSdkError?,
+    val error: String?,
 ) {
     init {
         require((response == null) != (error == null)) {
@@ -57,34 +49,6 @@ data class FireBoxChatResult(
         }
     }
 }
-
-data class FireBoxSdkError(
-    val code: Int,
-    val message: String,
-    val providerType: String?,
-    val providerModelId: String?,
-) {
-    companion object {
-        const val SECURITY = 1
-        const val INVALID_ARGUMENT = 2
-        const val NO_ROUTE = 3
-        const val NO_CANDIDATE = 4
-        const val PROVIDER_ERROR = 5
-        const val TIMEOUT = 6
-        const val INTERNAL = 7
-        const val CANCELLED = 8
-    }
-}
-
-data class FireBoxModelCandidateInfo(
-    val providerId: Int,
-    val providerType: String,
-    val providerName: String,
-    val baseUrl: String,
-    val modelId: String,
-    val enabledInConfig: Boolean,
-    val capabilitySupported: Boolean,
-)
 
 enum class FireBoxMediaFormat {
     Image,
@@ -100,10 +64,8 @@ data class FireBoxModelCapabilities(
 )
 
 data class FireBoxModelInfo(
-    val virtualModelId: String,
-    val strategy: String,
+    val modelId: String,
     val capabilities: FireBoxModelCapabilities,
-    val candidates: List<FireBoxModelCandidateInfo>,
     val available: Boolean,
 )
 
@@ -121,20 +83,19 @@ data class FireBoxEmbedding(
 }
 
 data class FireBoxEmbeddingRequest(
-    val virtualModelId: String,
+    val modelId: String,
     val input: List<String>,
 )
 
 data class FireBoxEmbeddingResponse(
-    val virtualModelId: String,
+    val modelId: String,
     val embeddings: List<FireBoxEmbedding>,
-    val selection: FireBoxProviderSelection,
     val usage: FireBoxUsage,
 )
 
 data class FireBoxEmbeddingResult(
     val response: FireBoxEmbeddingResponse?,
-    val error: FireBoxSdkError?,
+    val error: String?,
 ) {
     init {
         require((response == null) != (error == null)) {
@@ -148,10 +109,11 @@ data class FireBoxStreamEvent(
     val type: Type,
     val deltaText: String?,
     val reasoningText: String?,
-    val selection: FireBoxProviderSelection?,
     val usage: FireBoxUsage?,
-    val response: FireBoxChatResponse?,
-    val error: FireBoxSdkError?,
+    val modelId: String?,
+    val message: FireBoxMessage?,
+    val finishReason: String?,
+    val error: String?,
 ) {
     enum class Type {
         STARTED,
@@ -165,7 +127,6 @@ data class FireBoxStreamEvent(
 }
 
 data class FireBoxFunctionSpec<I, O>(
-    val virtualModelId: String,
     val name: String,
     val description: String,
     val inputSerializer: KSerializer<I>,
@@ -175,17 +136,16 @@ data class FireBoxFunctionSpec<I, O>(
 )
 
 data class FireBoxFunctionResponse<O>(
-    val virtualModelId: String,
+    val modelId: String,
     val output: O,
     val rawJson: String,
-    val selection: FireBoxProviderSelection,
     val usage: FireBoxUsage,
     val finishReason: String,
 )
 
 data class FireBoxFunctionResult<O>(
     val response: FireBoxFunctionResponse<O>?,
-    val error: FireBoxSdkError?,
+    val error: String?,
 ) {
     init {
         require((response == null) != (error == null)) {

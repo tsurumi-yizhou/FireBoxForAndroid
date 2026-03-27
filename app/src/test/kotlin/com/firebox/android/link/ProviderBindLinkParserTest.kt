@@ -17,7 +17,7 @@ class ProviderBindLinkParserTest {
         val payload = result.getOrThrow()
         assertEquals(ProviderType.OpenAI, payload.type)
         assertEquals("OpenRouter", payload.name)
-        assertEquals("https://openrouter.ai/api", payload.baseUrl)
+        assertEquals("https://openrouter.ai/api/v1", payload.baseUrl)
         assertEquals("sk-test", payload.apiKey)
     }
 
@@ -32,7 +32,7 @@ class ProviderBindLinkParserTest {
         val payload = result.getOrThrow()
         assertEquals(ProviderType.Anthropic, payload.type)
         assertEquals("Anthropic - api.anthropic.com", payload.name)
-        assertEquals("https://api.anthropic.com", payload.baseUrl)
+        assertEquals("https://api.anthropic.com/v1", payload.baseUrl)
         assertEquals("test-key", payload.apiKey)
     }
 

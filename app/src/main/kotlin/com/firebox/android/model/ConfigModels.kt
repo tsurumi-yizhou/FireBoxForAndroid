@@ -24,13 +24,19 @@ data class ClientConnectionInfo(
 
 @Serializable
 data class ClientAccessRecord(
+    val id: Int = 0,
     val packageName: String,
+    val processName: String = "",
+    val executablePath: String = "",
     val lastCallingUid: Int = -1,
+    val firstSeenAtMs: Long = 0L,
     val lastSeenAtMs: Long = 0L,
     val lastConnectedAtMs: Long = 0L,
     val lastRequestAtMs: Long = 0L,
     val totalConnections: Long = 0L,
     val totalRequests: Long = 0L,
+    val isAllowed: Boolean = true,
+    val deniedUntilUtc: String? = null,
 )
 
 @Serializable
@@ -48,6 +54,8 @@ data class ProviderConfig(
     val enabled: Boolean,
     val enabledModels: List<String> = emptyList(),
     val models: List<ProviderModelConfig> = emptyList(),
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val updatedAtMs: Long = createdAtMs,
     @Transient val apiKey: String = "",
 )
 
@@ -87,12 +95,8 @@ data class RouteRule(
     val strategy: RouteStrategy,
     val candidates: List<ModelTarget>,
     val capabilities: RouteModelCapabilities = RouteModelCapabilities(),
-)
-
-@Serializable
-data class QuickToolModelConfig(
-    val providerId: Int = 0,
-    val modelId: String = "",
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val updatedAtMs: Long = createdAtMs,
 )
 
 object ConfigDefaults {
@@ -101,8 +105,6 @@ object ConfigDefaults {
     fun routes(): List<RouteRule> = emptyList()
 
     fun clientAccessRecords(): List<ClientAccessRecord> = emptyList()
-
-    fun quickToolModel(): QuickToolModelConfig = QuickToolModelConfig()
 }
 
 object ModelPricing {

@@ -17,7 +17,7 @@ import org.junit.Test
 
 class FireBoxFunctionCallTest {
     @Test
-    fun callFunction_returnsNoCandidateWhenRouteHasNoOpenAiProvider() =
+    fun callFunction_returnsNoCandidateWhenRouteHasNoEnabledProvider() =
         runBlocking {
             val dispatcher = FireBoxAiDispatcher()
             val snapshot =
@@ -31,8 +31,8 @@ class FireBoxFunctionCallTest {
                                     name = "Gemini",
                                     baseUrl = "https://example.com",
                                     enabled = true,
-                                    enabledModels = listOf("gemini-2.5-pro"),
-                                    apiKey = "test-key",
+                                    enabledModels = emptyList(),
+                                    apiKey = "",
                                 ),
                         ),
                     routesByVirtualModelId =
@@ -48,7 +48,7 @@ class FireBoxFunctionCallTest {
                 )
 
             try {
-                dispatcher.callFunction(snapshot, functionRequest())
+                dispatcher.callFunction(snapshot, "chat-default", functionRequest())
             } catch (error: FireBoxServiceException) {
                 assertEquals(FireBoxError.NO_CANDIDATE, error.error.code)
                 return@runBlocking
@@ -95,7 +95,6 @@ class FireBoxFunctionCallTest {
 
     private fun functionRequest() =
         FunctionCallRequest(
-            virtualModelId = "chat-default",
             functionName = "extract_user",
             functionDescription = "Build a user summary.",
             inputJson = """{"prompt":"hello"}""",

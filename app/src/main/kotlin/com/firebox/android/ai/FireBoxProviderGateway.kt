@@ -24,7 +24,7 @@ import com.firebox.core.Embedding
 import com.firebox.core.EmbeddingRequest
 import com.firebox.core.FireBoxError
 import com.firebox.core.FunctionCallRequest
-import com.firebox.core.ModelMediaFormat
+import com.firebox.core.MediaFormat
 import com.firebox.core.ReasoningEffort
 import com.firebox.core.Usage
 import com.fasterxml.jackson.databind.JsonNode
@@ -545,7 +545,7 @@ internal class FireBoxProviderGateway {
                 )
             }
             attachments.forEach { attachment ->
-                require(attachment.mediaFormat == ModelMediaFormat.Image) {
+        require(attachment.mediaFormat == MediaFormat.Image) {
                     "Anthropic SDK 暂仅支持图片输入，收到 ${attachment.mediaFormat}"
                 }
                 add(
@@ -590,7 +590,7 @@ internal class FireBoxProviderGateway {
                             add(Part.fromText(message.content))
                         }
                         message.attachments.forEach { attachment ->
-                            require(attachment.mediaFormat == ModelMediaFormat.Image) {
+        require(attachment.mediaFormat == MediaFormat.Image) {
                                 "Gemini SDK 暂仅支持图片输入，收到 ${attachment.mediaFormat}"
                             }
                             add(
@@ -1625,7 +1625,7 @@ internal data class ProviderChatDelta(
 )
 
 internal data class ProviderChatRequest(
-    val virtualModelId: String,
+    val modelId: String,
     val messages: List<ProviderChatMessage>,
     val temperature: Float = -1f,
     val maxOutputTokens: Int = -1,
@@ -1640,7 +1640,7 @@ internal data class ProviderChatMessage(
 )
 
 internal data class ProviderChatAttachment(
-    val mediaFormat: ModelMediaFormat,
+    val mediaFormat: MediaFormat,
     val mimeType: String,
     val fileName: String? = null,
     val base64Data: String,
@@ -1670,9 +1670,11 @@ internal class FireBoxServiceException(
 
 private fun ProviderChatRequest.anthropicThinkingBudget(): Long =
     when (reasoningEffort) {
+        ReasoningEffort.Default -> 2048L
         ReasoningEffort.Low -> 1024L
         ReasoningEffort.Medium -> 2048L
         ReasoningEffort.High -> 4096L
+        ReasoningEffort.Max -> 8192L
         null ->
             maxOutputTokens
                 .takeIf { it > 0 }
@@ -1684,14 +1686,18 @@ private fun ProviderChatRequest.anthropicThinkingBudget(): Long =
 
 private fun ReasoningEffort.toGeminiThinkingLevel(): ThinkingLevel.Known =
     when (this) {
+        ReasoningEffort.Default -> ThinkingLevel.Known.MEDIUM
         ReasoningEffort.Low -> ThinkingLevel.Known.LOW
         ReasoningEffort.Medium -> ThinkingLevel.Known.MEDIUM
         ReasoningEffort.High -> ThinkingLevel.Known.HIGH
+        ReasoningEffort.Max -> ThinkingLevel.Known.HIGH
     }
 
 private fun ReasoningEffort.toOpenAiWireValue(): String =
     when (this) {
+        ReasoningEffort.Default -> "medium"
         ReasoningEffort.Low -> "low"
         ReasoningEffort.Medium -> "medium"
         ReasoningEffort.High -> "high"
+        ReasoningEffort.Max -> "high"
     }

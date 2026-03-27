@@ -6,7 +6,7 @@ import kotlinx.parcelize.Parcelize
 @Parcelize
 data class EmbeddingResult(
     val response: EmbeddingResponse?,
-    val error: FireBoxError?,
+    val error: String?,
 ) : Parcelable {
     init {
         require((response == null) != (error == null)) {

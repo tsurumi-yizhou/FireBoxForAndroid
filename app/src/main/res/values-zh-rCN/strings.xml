@@ -83,8 +83,8 @@
     <string name="config_api_key_label">API 密钥</string>
     <string name="config_api_key_edit_placeholder">留空则不修改密钥</string>
     <string name="config_manage_models">管理模型</string>
-    <string name="config_quick_tool_model">快速工具模型</string>
-    <string name="config_quick_tool_model_hint">用于会话标题生成等轻量工具任务。</string>
+    <string name="config_section_general">通用</string>
+    <string name="config_section_general_summary">通用行为与全局偏好设置。</string>
     <string name="config_provider_type_label">提供商类型</string>
     <string name="provider_bind_invalid_link">无效的 Provider 绑定链接</string>
 

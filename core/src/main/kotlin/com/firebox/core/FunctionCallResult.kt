@@ -6,7 +6,7 @@ import kotlinx.parcelize.Parcelize
 @Parcelize
 data class FunctionCallResult(
     val response: FunctionCallResponse?,
-    val error: FireBoxError?,
+    val error: String?,
 ) : Parcelable {
     init {
         require((response == null) != (error == null)) {

@@ -7,14 +7,14 @@ import com.firebox.android.model.RouteMediaFormat
 import com.firebox.android.model.RouteModelCapabilities
 import com.firebox.android.model.RouteRule
 import com.firebox.android.model.RouteStrategy
-import com.firebox.core.ModelMediaFormat
+import com.firebox.core.MediaFormat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FireBoxVirtualModelInfoTest {
     @Test
-    fun listVirtualModels_exposesRouteCapabilities() {
+    fun listModels_exposesRouteCapabilities() {
         val dispatcher = FireBoxAiDispatcher()
         val snapshot =
             RuntimeSnapshot(
@@ -50,11 +50,11 @@ class FireBoxVirtualModelInfoTest {
                     ),
             )
 
-        val model = dispatcher.listVirtualModels(snapshot).single()
+        val model = dispatcher.listModels(snapshot).single()
 
         assertTrue(model.capabilities.reasoning)
         assertTrue(model.capabilities.toolCalling)
-        assertEquals(listOf(ModelMediaFormat.Image, ModelMediaFormat.Audio), model.capabilities.inputFormats)
-        assertEquals(listOf(ModelMediaFormat.Video), model.capabilities.outputFormats)
+        assertEquals(listOf(MediaFormat.Image, MediaFormat.Audio), model.capabilities.inputFormats)
+        assertEquals(listOf(MediaFormat.Video), model.capabilities.outputFormats)
     }
 }

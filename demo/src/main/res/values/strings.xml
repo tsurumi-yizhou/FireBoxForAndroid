@@ -1,4 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FireBox Demo</string>
+    <string name="app_name">FireChatBox</string>
+    <string name="chat_context_model_label">Model</string>
+    <string name="chat_context_model_placeholder">Select model</string>
+    <string name="chat_context_model_loading">Loading models...</string>
+    <string name="chat_context_reasoning_label">Thinking</string>
+    <string name="chat_context_reasoning_default">Default</string>
+    <string name="chat_context_reasoning_unsupported">Unavailable</string>
+    <string name="chat_context_reasoning_low">Low</string>
+    <string name="chat_context_reasoning_medium">Medium</string>
+    <string name="chat_context_reasoning_high">High</string>
+    <string name="chat_context_open_dialog">Model settings</string>
+    <string name="chat_context_dialog_title">Model and thinking</string>
+    <string name="chat_context_dialog_done">Done</string>
+    <string name="chat_connection_connecting">Connecting to FireBox…</string>
+    <string name="chat_connection_failed">Unable to connect to FireBox service.</string>
+    <string name="chat_connection_details">Reason: %1$s</string>
+    <string name="chat_connection_retry">Retry connection</string>
+    <string name="chat_input_add_image">Add image</string>
+    <string name="chat_input_placeholder">Type your message...</string>
+    <string name="chat_input_send">Send</string>
+    <string name="chat_input_stop">Stop</string>
 </resources>

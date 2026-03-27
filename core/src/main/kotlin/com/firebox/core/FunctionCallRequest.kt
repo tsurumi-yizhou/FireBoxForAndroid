@@ -5,7 +5,6 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class FunctionCallRequest(
-    val virtualModelId: String,
     val functionName: String,
     val functionDescription: String,
     val inputJson: String,

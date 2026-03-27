@@ -5,7 +5,7 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class ChatCompletionRequest(
-    val virtualModelId: String,
+    val modelId: String,
     val messages: List<ChatMessage>,
     val temperature: Float = -1f,
     val maxOutputTokens: Int = -1,

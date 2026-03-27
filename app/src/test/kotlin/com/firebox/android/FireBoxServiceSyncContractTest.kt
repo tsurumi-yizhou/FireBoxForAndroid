@@ -5,11 +5,9 @@ import com.firebox.core.ChatCompletionResponse
 import com.firebox.core.ChatCompletionResult
 import com.firebox.core.ChatMessage
 import com.firebox.core.FireBoxError
-import com.firebox.core.ProviderSelection
 import com.firebox.core.Usage
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -19,9 +17,8 @@ class FireBoxServiceSyncContractTest {
         runBlocking {
             val response =
                 ChatCompletionResponse(
-                    virtualModelId = "chat-default",
+                    modelId = "chat-default",
                     message = ChatMessage(role = "assistant", content = "ok"),
-                    selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
                     usage = Usage(1, 2, 3),
                     finishReason = "stop",
                 )
@@ -40,48 +37,33 @@ class FireBoxServiceSyncContractTest {
 
     @Test
     fun fireBoxSyncResultOf_mapsSecurityException() =
-        assertFailureCode(SecurityException("missing permission"), FireBoxError.SECURITY)
+        assertFailureMessage(SecurityException("missing permission"), "missing permission")
 
     @Test
     fun fireBoxSyncResultOf_mapsIllegalArgumentException() =
-        assertFailureCode(IllegalArgumentException("bad request"), FireBoxError.INVALID_ARGUMENT)
+        assertFailureMessage(IllegalArgumentException("bad request"), "bad request")
 
     @Test
-    fun fireBoxSyncResultOf_mapsNoRouteError() =
-        assertServiceFailureCode(FireBoxError.NO_ROUTE)
-
-    @Test
-    fun fireBoxSyncResultOf_mapsNoCandidateError() =
-        assertServiceFailureCode(FireBoxError.NO_CANDIDATE)
-
-    @Test
-    fun fireBoxSyncResultOf_mapsTimeoutError() =
-        assertServiceFailureCode(FireBoxError.TIMEOUT)
-
-    @Test
-    fun fireBoxSyncResultOf_mapsProviderError() =
-        assertServiceFailureCode(FireBoxError.PROVIDER_ERROR)
-
-    @Test
-    fun fireBoxSyncResultOf_mapsUnknownThrowableToInternal() =
-        assertFailureCode(IllegalStateException("boom"), FireBoxError.INTERNAL)
-
-    private fun assertServiceFailureCode(code: Int) =
-        assertFailureCode(
+    fun fireBoxSyncResultOf_mapsServiceExceptionMessage() =
+        assertFailureMessage(
             FireBoxServiceException(
                 FireBoxError(
-                    code = code,
+                    code = FireBoxError.NO_ROUTE,
                     message = "service error",
                     providerType = "OpenAI",
                     providerModelId = "gpt-4.1",
                 ),
             ),
-            code,
+            "service error",
         )
 
-    private fun assertFailureCode(
+    @Test
+    fun fireBoxSyncResultOf_mapsUnknownThrowableToInternalMessage() =
+        assertFailureMessage(IllegalStateException("boom"), "boom")
+
+    private fun assertFailureMessage(
         throwable: Throwable,
-        expectedCode: Int,
+        expectedMessage: String,
     ) =
         runBlocking {
             val result =
@@ -93,7 +75,6 @@ class FireBoxServiceSyncContractTest {
                 }
 
             assertNull(result.response)
-            assertNotNull(result.error)
-            assertEquals(expectedCode, result.error?.code)
+            assertEquals(expectedMessage, result.error)
         }
 }

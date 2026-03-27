@@ -5,7 +5,6 @@ import com.firebox.android.ai.ProviderBaseUrlNormalizer
 import com.firebox.android.model.ClientAccessRecord
 import com.firebox.android.model.ProviderConfig
 import com.firebox.android.model.ProviderType
-import com.firebox.android.model.QuickToolModelConfig
 import com.firebox.android.model.RouteRule
 import com.firebox.android.model.RouteStrategy
 import kotlinx.coroutines.flow.combine
@@ -28,14 +27,9 @@ class FireBoxConfigRepository internal constructor(
     val providers: Flow<List<ProviderConfig>> =
         combine(storage.providers, secureKeyStore.apiKeys) { providers, apiKeys ->
             providers.map { provider ->
-                val migratedEnabledModels =
-                    provider.enabledModels.ifEmpty {
-                        provider.models.filter { it.enabled }.map { it.modelId }
-                    }
                 provider.copy(
                     enabled = true,
                     apiKey = apiKeys[provider.id].orEmpty(),
-                    enabledModels = migratedEnabledModels,
                     models = emptyList(),
                 )
             }
@@ -44,9 +38,6 @@ class FireBoxConfigRepository internal constructor(
 
     val routes: Flow<List<RouteRule>> =
         storage.routes.distinctUntilChanged()
-
-    val quickToolModel: Flow<QuickToolModelConfig> =
-        storage.quickToolModel.distinctUntilChanged()
 
     suspend fun recordClientConnected(
         packageName: String,
@@ -85,6 +76,7 @@ class FireBoxConfigRepository internal constructor(
     suspend fun addProvider() {
         storage.updateProviders { current ->
             val nextId = (current.maxOfOrNull { it.id } ?: 0) + 1
+            val now = System.currentTimeMillis()
             val newProvider =
                 ProviderConfig(
                     id = nextId,
@@ -92,6 +84,8 @@ class FireBoxConfigRepository internal constructor(
                     name = "Provider #$nextId",
                     baseUrl = "",
                     enabled = true,
+                    createdAtMs = now,
+                    updatedAtMs = now,
                 )
             val updated =
                 listOf(newProvider) + current
@@ -120,15 +114,27 @@ class FireBoxConfigRepository internal constructor(
                 enabled = true,
                 baseUrl = normalizedBaseUrl,
             )
-        if (normalizedProvider.apiKey.isNotBlank()) {
+        if (normalizedProvider.apiKey.isBlank()) {
+            secureKeyStore.deleteApiKey(normalizedProvider.id)
+        } else {
             secureKeyStore.setApiKey(normalizedProvider.id, normalizedProvider.apiKey)
         }
         storage.updateProviders { current ->
+            val now = System.currentTimeMillis()
             val updated =
                 if (current.any { it.id == normalizedProvider.id }) {
-                    current.map { if (it.id == normalizedProvider.id) normalizedProvider else it }
+                    current.map { existing ->
+                        if (existing.id == normalizedProvider.id) {
+                            normalizedProvider.copy(
+                                createdAtMs = existing.createdAtMs,
+                                updatedAtMs = now,
+                            )
+                        } else {
+                            existing
+                        }
+                    }
                 } else {
-                    current + normalizedProvider
+                    current + normalizedProvider.copy(createdAtMs = now, updatedAtMs = now)
                 }
             updated
         }
@@ -139,24 +145,20 @@ class FireBoxConfigRepository internal constructor(
         storage.updateProviders { current ->
             current.filterNot { it.id == providerId }
         }
-        storage.updateQuickToolModel { current ->
-            if (current.providerId == providerId) {
-                QuickToolModelConfig()
-            } else {
-                current
-            }
-        }
     }
 
     suspend fun addRouteRule() {
         storage.updateRoutes { current ->
             val nextId = (current.maxOfOrNull { it.id } ?: 0) + 1
+            val now = System.currentTimeMillis()
             val newRule =
                 RouteRule(
                     id = nextId,
                     virtualModelId = "",
                     strategy = RouteStrategy.Failover,
                     candidates = emptyList(),
+                    createdAtMs = now,
+                    updatedAtMs = now,
                 )
             val updated =
                 listOf(newRule) + current
@@ -166,11 +168,21 @@ class FireBoxConfigRepository internal constructor(
 
     suspend fun upsertRouteRule(rule: RouteRule) {
         storage.updateRoutes { current ->
+            val now = System.currentTimeMillis()
             val updated =
                 if (current.any { it.id == rule.id }) {
-                    current.map { if (it.id == rule.id) rule else it }
+                    current.map { existing ->
+                        if (existing.id == rule.id) {
+                            rule.copy(
+                                createdAtMs = existing.createdAtMs,
+                                updatedAtMs = now,
+                            )
+                        } else {
+                            existing
+                        }
+                    }
                 } else {
-                    current + rule
+                    current + rule.copy(createdAtMs = now, updatedAtMs = now)
                 }
             updated
         }
@@ -182,8 +194,23 @@ class FireBoxConfigRepository internal constructor(
         }
     }
 
-    suspend fun upsertQuickToolModel(config: QuickToolModelConfig) {
-        storage.updateQuickToolModel { config }
+    suspend fun updateClientAccessAllowed(
+        accessId: Int,
+        isAllowed: Boolean,
+        deniedUntilUtc: String? = null,
+    ) {
+        storage.updateClientAccessRecords { current ->
+            current.map { record ->
+                if (record.id == accessId) {
+                    record.copy(
+                        isAllowed = isAllowed,
+                        deniedUntilUtc = if (isAllowed) null else deniedUntilUtc,
+                    )
+                } else {
+                    record
+                }
+            }
+        }
     }
 
     private fun upsertClientAccessRecord(
@@ -194,13 +221,17 @@ class FireBoxConfigRepository internal constructor(
         connectedAtMs: Long = 0L,
         requestedAtMs: Long = 0L,
     ): List<ClientAccessRecord> {
+        val packageRecords = current.filter { it.packageName == packageName }
+        val existingRecord = packageRecords.maxByOrNull { it.lastSeenAtMs }
         val updated =
-            if (current.any { it.packageName == packageName }) {
+            if (existingRecord != null) {
                 current.map { existing ->
-                    if (existing.packageName != packageName) {
+                    if (existing.id != existingRecord.id) {
                         existing
                     } else {
                         existing.copy(
+                            processName = existing.processName.ifBlank { packageName },
+                            executablePath = existing.executablePath.ifBlank { packageName },
                             lastCallingUid = callingUid,
                             lastSeenAtMs = maxOf(existing.lastSeenAtMs, seenAtMs),
                             lastConnectedAtMs =
@@ -219,10 +250,15 @@ class FireBoxConfigRepository internal constructor(
                     }
                 }
             } else {
+                val nextId = (current.maxOfOrNull { it.id } ?: 0) + 1
                 current +
                         ClientAccessRecord(
+                            id = nextId,
                             packageName = packageName,
+                            processName = packageName,
+                            executablePath = packageName,
                             lastCallingUid = callingUid,
+                            firstSeenAtMs = seenAtMs,
                             lastSeenAtMs = seenAtMs,
                             lastConnectedAtMs = connectedAtMs,
                             lastRequestAtMs = requestedAtMs,

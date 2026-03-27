@@ -4,9 +4,7 @@ import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 
 @Parcelize
-data class FunctionCallResponse(
+data class RouteCandidateInfo(
+    val providerId: Int,
     val modelId: String,
-    val outputJson: String,
-    val usage: Usage,
-    val finishReason: String,
 ) : Parcelable

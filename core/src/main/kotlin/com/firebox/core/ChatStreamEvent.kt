@@ -9,10 +9,11 @@ data class ChatStreamEvent(
     val type: Int,
     val deltaText: String?,
     val reasoningText: String? = null,
-    val selection: ProviderSelection?,
     val usage: Usage?,
-    val response: ChatCompletionResponse?,
-    val error: FireBoxError?,
+    val modelId: String? = null,
+    val message: ChatMessage? = null,
+    val finishReason: String? = null,
+    val error: String? = null,
 ) : Parcelable {
     companion object {
         const val STARTED = 0

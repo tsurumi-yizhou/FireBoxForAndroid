@@ -6,9 +6,9 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class ChatAttachment(
-    val mediaFormat: ModelMediaFormat,
+    val mediaFormat: MediaFormat,
     val mimeType: String,
     val fileName: String? = null,
-    val fileDescriptor: ParcelFileDescriptor,
+    val data: ParcelFileDescriptor,
     val sizeBytes: Long = -1L,
 ) : Parcelable

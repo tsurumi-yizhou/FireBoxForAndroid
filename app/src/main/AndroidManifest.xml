@@ -8,7 +8,13 @@
             android:description="@string/permission_bind_firebox_service_desc"
             android:protectionLevel="dangerous"/>
 
+    <permission
+            android:name="${applicationId}.permission.BIND_FIREBOX_CONTROL_SERVICE"
+            android:label="FireBox Control"
+            android:protectionLevel="signature"/>
+
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="${applicationId}.permission.BIND_FIREBOX_SERVICE"/>
     <uses-permission
             android:name="android.permission.QUERY_ALL_PACKAGES"
             tools:ignore="QueryAllPackagesPermission"/>
@@ -46,7 +52,8 @@
                 android:exported="true"
                 android:permission="${applicationId}.permission.BIND_FIREBOX_SERVICE">
             <intent-filter>
-                <action android:name="${applicationId}.action.BIND_FIREBOX_SERVICE"/>
+                <action android:name="${applicationId}.action.BIND_CAPABILITY_SERVICE"/>
+                <action android:name="${applicationId}.action.BIND_CONTROL_SERVICE"/>
             </intent-filter>
         </service>
 

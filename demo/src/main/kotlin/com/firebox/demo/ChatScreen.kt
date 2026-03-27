@@ -31,13 +31,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -47,9 +52,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -74,6 +83,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,6 +99,7 @@ import com.firebox.client.model.FireBoxModelInfo
 import com.firebox.client.model.FireBoxReasoningEffort
 import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
 import com.mikepenz.markdown.m3.Markdown
+import com.mikepenz.markdown.m3.markdownTypography
 import java.io.File
 import kotlinx.serialization.Serializable
 
@@ -151,13 +162,17 @@ fun ChatScreen() {
         ChatDetailPane(
             uiState = uiState,
             onSendMessage = viewModel::sendMessage,
+            onStopStreaming = viewModel::stopStreaming,
             onRetryMessage = viewModel::retryMessage,
             onDeleteMessage = viewModel::deleteMessage,
             onToggleReasoning = viewModel::toggleReasoning,
             onSelectModel = viewModel::selectModel,
             onSelectReasoningEffort = viewModel::selectReasoningEffort,
             onRefreshModels = viewModel::refreshModels,
+            onRetryConnect = viewModel::retryConnection,
             onDismissError = viewModel::dismissError,
+            onOpenModelSetupDialog = viewModel::showModelSetupDialog,
+            onDismissModelSetupDialog = viewModel::dismissModelSetupDialog,
             showMenuButton = showMenuButton,
             onMenuClick = {
                 if (backStack.lastOrNull() != DemoNavKey.Conversations) {
@@ -216,18 +231,22 @@ fun ChatScreen() {
 private fun ChatDetailPane(
     uiState: ChatUiState,
     onSendMessage: (String, List<ChatUiAttachment>) -> Unit,
+    onStopStreaming: () -> Unit,
     onRetryMessage: (Long) -> Unit,
     onDeleteMessage: (Long) -> Unit,
     onToggleReasoning: (Long) -> Unit,
     onSelectModel: (String) -> Unit,
     onSelectReasoningEffort: (FireBoxReasoningEffort?) -> Unit,
     onRefreshModels: () -> Unit,
+    onRetryConnect: () -> Unit,
     onDismissError: () -> Unit,
+    onOpenModelSetupDialog: () -> Unit,
+    onDismissModelSetupDialog: () -> Unit,
     showMenuButton: Boolean,
     onMenuClick: () -> Unit,
 ) {
     val context = LocalContext.current
-    val canSend = uiState.isConnected && !uiState.isLoading && uiState.selectedModel != null
+    val inputEnabled = uiState.isConnected && !uiState.isLoading && uiState.selectedModel != null
     val supportsImageInput =
         uiState.selectedModelInfo?.capabilities?.inputFormats?.contains(FireBoxMediaFormat.Image) == true
     val snackbarHostState = remember { SnackbarHostState() }
@@ -237,6 +256,7 @@ private fun ChatDetailPane(
             MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     )
+    val supportsReasoning = uiState.selectedModelInfo?.capabilities?.reasoning == true
 
     if (!uiState.isConnected) {
         Box(
@@ -254,11 +274,31 @@ private fun ChatDetailPane(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    LinearProgressIndicator(modifier = Modifier.width(220.dp))
+                    if (uiState.isConnecting) {
+                        LinearProgressIndicator(modifier = Modifier.width(220.dp))
+                    }
                     Text(
-                        text = "Connecting to FireBox...",
+                        text =
+                            if (uiState.isConnecting) {
+                                stringResource(R.string.chat_connection_connecting)
+                            } else {
+                                stringResource(R.string.chat_connection_failed)
+                            },
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    uiState.connectionError?.takeIf { it.isNotBlank() }?.let { details ->
+                        Text(
+                            text = stringResource(R.string.chat_connection_details, details),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                    if (!uiState.isConnecting) {
+                        OutlinedButton(onClick = onRetryConnect) {
+                            Text(stringResource(R.string.chat_connection_retry))
+                        }
+                    }
                 }
             }
         }
@@ -269,6 +309,20 @@ private fun ChatDetailPane(
         val error = uiState.error ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(error)
         onDismissError()
+    }
+
+    if (uiState.showModelSetupDialog) {
+        ModelSetupDialog(
+            selectedModel = uiState.selectedModel,
+            availableModels = uiState.availableModels,
+            selectedReasoningEffort = uiState.selectedReasoningEffort,
+            supportsReasoning = supportsReasoning,
+            enabled = uiState.isConnected && !uiState.isLoading,
+            modelsLoaded = uiState.modelsLoaded,
+            onModelSelected = onSelectModel,
+            onReasoningEffortSelected = onSelectReasoningEffort,
+            onDismiss = onDismissModelSetupDialog,
+        )
     }
 
     Box(
@@ -295,6 +349,14 @@ private fun ChatDetailPane(
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
+                    actions = {
+                        IconButton(onClick = onOpenModelSetupDialog) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = stringResource(R.string.chat_context_open_dialog),
+                            )
+                        }
+                    },
                 )
             },
         ) { paddingValues ->
@@ -303,19 +365,6 @@ private fun ChatDetailPane(
                     .fillMaxSize()
                     .padding(paddingValues),
             ) {
-                ChatContextBar(
-                    selectedModel = uiState.selectedModel,
-                    availableModels = uiState.availableModels,
-                    supportsImageInput = supportsImageInput,
-                    supportsReasoning = uiState.selectedModelInfo?.capabilities?.reasoning == true,
-                    selectedReasoningEffort = uiState.selectedReasoningEffort,
-                    messageCount = uiState.messages.size,
-                    onModelSelected = onSelectModel,
-                    onReasoningEffortSelected = onSelectReasoningEffort,
-                    enabled = uiState.isConnected && !uiState.isLoading,
-                    modelsLoaded = uiState.modelsLoaded,
-                )
-
                 if (uiState.modelsLoaded && uiState.availableModels.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -368,7 +417,9 @@ private fun ChatDetailPane(
 
                 MessageInput(
                     onSendMessage = onSendMessage,
-                    enabled = canSend,
+                    onStopStreaming = onStopStreaming,
+                    inputEnabled = inputEnabled,
+                    isStreaming = uiState.isLoading,
                     supportsImageInput = supportsImageInput,
                     context = context,
                     modifier = Modifier.imePadding(),
@@ -379,37 +430,22 @@ private fun ChatDetailPane(
 }
 
 @Composable
-private fun ChatContextBar(
+private fun ModelSetupDialog(
     selectedModel: String?,
     availableModels: List<FireBoxModelInfo>,
-    supportsImageInput: Boolean,
-    supportsReasoning: Boolean,
     selectedReasoningEffort: FireBoxReasoningEffort?,
-    messageCount: Int,
-    onModelSelected: (String) -> Unit,
-    onReasoningEffortSelected: (FireBoxReasoningEffort?) -> Unit,
+    supportsReasoning: Boolean,
     enabled: Boolean,
     modelsLoaded: Boolean,
+    onModelSelected: (String) -> Unit,
+    onReasoningEffortSelected: (FireBoxReasoningEffort?) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(18.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.chat_context_dialog_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 ModelSelector(
                     selectedModel = selectedModel,
                     availableModels = availableModels,
@@ -417,32 +453,23 @@ private fun ChatContextBar(
                     enabled = enabled,
                     modelsLoaded = modelsLoaded,
                 )
-
-                if (supportsReasoning) {
-                    ReasoningEffortSelector(
-                        selected = selectedReasoningEffort,
-                        onSelected = onReasoningEffortSelected,
-                        enabled = enabled,
-                    )
-                }
+                ReasoningEffortSelector(
+                    selected = selectedReasoningEffort,
+                    onSelected = onReasoningEffortSelected,
+                    enabled = enabled,
+                    supported = supportsReasoning,
+                )
             }
-
-            Text(
-                text = if (supportsImageInput) {
-                    "$messageCount messages  \u2022  image input on"
-                } else {
-                    "$messageCount messages"
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp),
-            )
-        }
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.chat_context_dialog_done))
+            }
+        },
+    )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModelSelector(
     selectedModel: String?,
@@ -450,106 +477,133 @@ private fun ModelSelector(
     onModelSelected: (String) -> Unit,
     enabled: Boolean,
     modelsLoaded: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedModelLabel = selectedModel?.substringAfterLast("/") ?: "Select model"
-
-    if (!modelsLoaded) {
-        CircularProgressIndicator(
-            modifier = Modifier
-                .size(24.dp)
-                .padding(end = 8.dp),
-            strokeWidth = 2.dp,
-        )
-        return
-    }
-
-    if (availableModels.isEmpty()) return
-
-    Box {
-        OutlinedButton(
-            onClick = { expanded = true },
-            enabled = enabled,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = selectedModelLabel,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(2.dp))
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+    val selectedModelLabel =
+        selectedModel?.substringAfterLast("/")
+            ?: stringResource(R.string.chat_context_model_placeholder)
+    val selectorEnabled = enabled && modelsLoaded && availableModels.isNotEmpty()
+    val selectorText =
+        when {
+            !modelsLoaded -> stringResource(R.string.chat_context_model_loading)
+            else -> selectedModelLabel
         }
 
-        DropdownMenu(
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { shouldExpand ->
+            if (selectorEnabled) {
+                expanded = shouldExpand
+            }
+        },
+        modifier = modifier,
+    ) {
+        OutlinedTextField(
+            value = selectorText,
+            onValueChange = {},
+            modifier =
+                Modifier
+                    .menuAnchor(
+                        type = ExposedDropdownMenuAnchorType.PrimaryNotEditable,
+                        enabled = selectorEnabled,
+                    )
+                    .fillMaxWidth(),
+            readOnly = true,
+            singleLine = true,
+            enabled = selectorEnabled,
+            label = { Text(stringResource(R.string.chat_context_model_label)) },
+            shape = RoundedCornerShape(12.dp),
+            trailingIcon = {
+                if (!modelsLoaded) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                }
+            },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+        )
+
+        ExposedDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
         ) {
             availableModels.forEach { model ->
                 DropdownMenuItem(
-                    text = { Text(model.virtualModelId) },
+                    text = { Text(model.modelId) },
                     onClick = {
-                        onModelSelected(model.virtualModelId)
+                        onModelSelected(model.modelId)
                         expanded = false
                     },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReasoningEffortSelector(
     selected: FireBoxReasoningEffort?,
     onSelected: (FireBoxReasoningEffort?) -> Unit,
     enabled: Boolean,
+    supported: Boolean,
+    modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val label = selected?.name ?: "Thinking"
+    val options = listOf(null) + FireBoxReasoningEffort.entries
+    val selectedIndex = options.indexOf(selected)
 
-    Box {
-        OutlinedButton(
-            onClick = { expanded = true },
-            enabled = enabled,
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-            )
-            Spacer(Modifier.width(2.dp))
-            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text("Default") },
-                onClick = {
-                    onSelected(null)
-                    expanded = false
-                },
-            )
-            FireBoxReasoningEffort.entries.forEach { effort ->
-                DropdownMenuItem(
-                    text = { Text(effort.name) },
-                    onClick = {
-                        onSelected(effort)
-                        expanded = false
-                    },
-                )
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.chat_context_reasoning_label),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (supported) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+            },
+        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, effort ->
+                SegmentedButton(
+                    selected = index == selectedIndex,
+                    onClick = { onSelected(effort) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                    enabled = enabled && supported,
+                    icon = {},
+                ) {
+                    Text(
+                        text = effort?.reasoningEffortLabel()
+                            ?: stringResource(R.string.chat_context_reasoning_default),
+                        maxLines = 1,
+                    )
+                }
             }
+        }
+        if (!supported) {
+            Text(
+                text = stringResource(R.string.chat_context_reasoning_unsupported),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+            )
         }
     }
 }
+
+@Composable
+private fun FireBoxReasoningEffort.reasoningEffortLabel(): String =
+    when (this) {
+        FireBoxReasoningEffort.Low -> stringResource(R.string.chat_context_reasoning_low)
+        FireBoxReasoningEffort.Medium -> stringResource(R.string.chat_context_reasoning_medium)
+        FireBoxReasoningEffort.High -> stringResource(R.string.chat_context_reasoning_high)
+    }
 
 @Composable
 private fun MessageList(
@@ -629,6 +683,14 @@ private fun MessageBubble(
     } else {
         MaterialTheme.colorScheme.surfaceContainerHigh
     }
+    val compactMarkdownTypography = markdownTypography(
+        h1 = MaterialTheme.typography.displaySmall,
+        h2 = MaterialTheme.typography.headlineMedium,
+        h3 = MaterialTheme.typography.headlineSmall,
+        h4 = MaterialTheme.typography.titleLarge,
+        h5 = MaterialTheme.typography.titleMedium,
+        h6 = MaterialTheme.typography.titleSmall,
+    )
 
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -673,6 +735,7 @@ private fun MessageBubble(
                         SelectionContainer {
                             Markdown(
                                 content = message.content,
+                                typography = compactMarkdownTypography,
                                 imageTransformer = Coil3ImageTransformerImpl,
                             )
                         }
@@ -752,13 +815,16 @@ private fun MessageBubble(
 @Composable
 private fun MessageInput(
     onSendMessage: (String, List<ChatUiAttachment>) -> Unit,
-    enabled: Boolean,
+    onStopStreaming: () -> Unit,
+    inputEnabled: Boolean,
+    isStreaming: Boolean,
     supportsImageInput: Boolean,
     context: Context,
     modifier: Modifier = Modifier,
 ) {
     var text by remember { mutableStateOf("") }
     var attachments by remember { mutableStateOf<List<ChatUiAttachment>>(emptyList()) }
+    val canSend = text.isNotBlank() || attachments.isNotEmpty()
     val imagePicker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             val imported = uri?.let { importImageAttachment(context, it) } ?: return@rememberLauncherForActivityResult
@@ -803,11 +869,11 @@ private fun MessageInput(
                 if (supportsImageInput) {
                     FilledTonalIconButton(
                         onClick = { imagePicker.launch(arrayOf("image/*")) },
-                        enabled = enabled,
+                        enabled = inputEnabled,
                     ) {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Add image",
+                            contentDescription = stringResource(R.string.chat_input_add_image),
                         )
                     }
                 }
@@ -816,8 +882,8 @@ private fun MessageInput(
                     value = text,
                     onValueChange = { text = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type your message...") },
-                    enabled = enabled,
+                    placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
+                    enabled = inputEnabled,
                     maxLines = 5,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
@@ -832,17 +898,23 @@ private fun MessageInput(
 
                 FilledIconButton(
                     onClick = {
-                        if (text.isNotBlank() || attachments.isNotEmpty()) {
+                        if (isStreaming) {
+                            onStopStreaming()
+                        } else if (canSend) {
                             onSendMessage(text, attachments)
                             text = ""
                             attachments = emptyList()
                         }
                     },
-                    enabled = enabled && (text.isNotBlank() || attachments.isNotEmpty()),
+                    enabled = isStreaming || (inputEnabled && canSend),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
+                        imageVector = if (isStreaming) Icons.Default.Stop else Icons.AutoMirrored.Filled.Send,
+                        contentDescription = if (isStreaming) {
+                            stringResource(R.string.chat_input_stop)
+                        } else {
+                            stringResource(R.string.chat_input_send)
+                        },
                     )
                 }
             }

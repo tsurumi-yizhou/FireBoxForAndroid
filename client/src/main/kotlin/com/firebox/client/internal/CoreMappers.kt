@@ -15,11 +15,8 @@ import com.firebox.client.model.FireBoxFunctionSpec
 import com.firebox.client.model.FireBoxMediaFormat
 import com.firebox.client.model.FireBoxMessage
 import com.firebox.client.model.FireBoxMessageAttachment
-import com.firebox.client.model.FireBoxModelCandidateInfo
 import com.firebox.client.model.FireBoxModelCapabilities
 import com.firebox.client.model.FireBoxModelInfo
-import com.firebox.client.model.FireBoxProviderSelection
-import com.firebox.client.model.FireBoxSdkError
 import com.firebox.client.model.FireBoxStreamEvent
 import com.firebox.client.model.FireBoxUsage
 import com.firebox.core.ChatAttachment
@@ -32,23 +29,20 @@ import com.firebox.core.Embedding
 import com.firebox.core.EmbeddingRequest
 import com.firebox.core.EmbeddingResponse
 import com.firebox.core.EmbeddingResult
-import com.firebox.core.FireBoxError
 import com.firebox.core.FunctionCallRequest
 import com.firebox.core.FunctionCallResponse
 import com.firebox.core.FunctionCallResult
-import com.firebox.core.ModelCandidateInfo
+import com.firebox.core.MediaFormat
 import com.firebox.core.ModelCapabilities
-import com.firebox.core.ModelMediaFormat
-import com.firebox.core.ProviderSelection
+import com.firebox.core.ModelInfo
 import com.firebox.core.ReasoningEffort
 import com.firebox.core.Usage
-import com.firebox.core.VirtualModelInfo
 import java.io.File
 import kotlinx.serialization.KSerializer
 
 internal fun FireBoxChatRequest.toCore(): ChatCompletionRequest =
     ChatCompletionRequest(
-        virtualModelId = virtualModelId,
+        modelId = modelId,
         messages = messages.map(FireBoxMessage::toCore),
         temperature = temperature,
         maxOutputTokens = maxOutputTokens,
@@ -57,13 +51,12 @@ internal fun FireBoxChatRequest.toCore(): ChatCompletionRequest =
 
 internal fun FireBoxEmbeddingRequest.toCore(): EmbeddingRequest =
     EmbeddingRequest(
-        virtualModelId = virtualModelId,
+        modelId = modelId,
         input = input,
     )
 
 internal fun <I, O> FireBoxFunctionSpec<I, O>.toCore(input: I): FunctionCallRequest =
     FunctionCallRequest(
-        virtualModelId = virtualModelId,
         functionName = name,
         functionDescription = description,
         inputJson = FunctionSchemaSupport.encode(input, inputSerializer),
@@ -89,17 +82,15 @@ private fun FireBoxMessageAttachment.toCore(): ChatAttachment {
         mediaFormat = mediaFormat.toCore(),
         mimeType = mimeType,
         fileName = fileName,
-        fileDescriptor = descriptor,
+        data = descriptor,
         sizeBytes = sizeBytes.takeIf { it >= 0L } ?: file.length(),
     )
 }
 
-internal fun VirtualModelInfo.toClient(): FireBoxModelInfo =
+internal fun ModelInfo.toClient(): FireBoxModelInfo =
     FireBoxModelInfo(
-        virtualModelId = virtualModelId,
-        strategy = strategy,
+        modelId = modelId,
         capabilities = capabilities.toClient(),
-        candidates = candidates.map(ModelCandidateInfo::toClient),
         available = available,
     )
 
@@ -107,22 +98,22 @@ private fun ModelCapabilities.toClient(): FireBoxModelCapabilities =
     FireBoxModelCapabilities(
         reasoning = reasoning,
         toolCalling = toolCalling,
-        inputFormats = inputFormats.map(ModelMediaFormat::toClient),
-        outputFormats = outputFormats.map(ModelMediaFormat::toClient),
+        inputFormats = inputFormats.map(MediaFormat::toClient),
+        outputFormats = outputFormats.map(MediaFormat::toClient),
     )
 
-private fun ModelMediaFormat.toClient(): FireBoxMediaFormat =
+private fun MediaFormat.toClient(): FireBoxMediaFormat =
     when (this) {
-        ModelMediaFormat.Image -> FireBoxMediaFormat.Image
-        ModelMediaFormat.Video -> FireBoxMediaFormat.Video
-        ModelMediaFormat.Audio -> FireBoxMediaFormat.Audio
+        MediaFormat.Image -> FireBoxMediaFormat.Image
+        MediaFormat.Video -> FireBoxMediaFormat.Video
+        MediaFormat.Audio -> FireBoxMediaFormat.Audio
     }
 
-private fun FireBoxMediaFormat.toCore(): ModelMediaFormat =
+private fun FireBoxMediaFormat.toCore(): MediaFormat =
     when (this) {
-        FireBoxMediaFormat.Image -> ModelMediaFormat.Image
-        FireBoxMediaFormat.Video -> ModelMediaFormat.Video
-        FireBoxMediaFormat.Audio -> ModelMediaFormat.Audio
+        FireBoxMediaFormat.Image -> MediaFormat.Image
+        FireBoxMediaFormat.Video -> MediaFormat.Video
+        FireBoxMediaFormat.Audio -> MediaFormat.Audio
     }
 
 private fun FireBoxReasoningEffort.toCore(): ReasoningEffort =
@@ -132,23 +123,11 @@ private fun FireBoxReasoningEffort.toCore(): ReasoningEffort =
         FireBoxReasoningEffort.High -> ReasoningEffort.High
     }
 
-private fun ModelCandidateInfo.toClient(): FireBoxModelCandidateInfo =
-    FireBoxModelCandidateInfo(
-        providerId = providerId,
-        providerType = providerType,
-        providerName = providerName,
-        baseUrl = baseUrl,
-        modelId = modelId,
-        enabledInConfig = enabledInConfig,
-        capabilitySupported = capabilitySupported,
-    )
-
 internal fun ChatCompletionResponse.toClient(): FireBoxChatResponse =
     FireBoxChatResponse(
-        virtualModelId = virtualModelId,
+        modelId = modelId,
         message = message.toClient(),
         reasoningText = reasoningText,
-        selection = selection.toClient(),
         usage = usage.toClient(),
         finishReason = finishReason,
     )
@@ -156,27 +135,26 @@ internal fun ChatCompletionResponse.toClient(): FireBoxChatResponse =
 internal fun ChatCompletionResult.toClient(): FireBoxChatResult =
     FireBoxChatResult(
         response = response?.toClient(),
-        error = error?.toClient(),
+        error = error,
     )
 
 internal fun EmbeddingResponse.toClient(): FireBoxEmbeddingResponse =
     FireBoxEmbeddingResponse(
-        virtualModelId = virtualModelId,
+        modelId = modelId,
         embeddings = embeddings.map(Embedding::toClient),
-        selection = selection.toClient(),
         usage = usage.toClient(),
     )
 
 internal fun EmbeddingResult.toClient(): FireBoxEmbeddingResult =
     FireBoxEmbeddingResult(
         response = response?.toClient(),
-        error = error?.toClient(),
+        error = error,
     )
 
 internal fun <O> FunctionCallResult.toClient(outputSerializer: KSerializer<O>): FireBoxFunctionResult<O> =
     FireBoxFunctionResult(
         response = response?.toClient(outputSerializer),
-        error = error?.toClient(),
+        error = error,
     )
 
 internal fun CoreChatStreamEvent.toClient(): FireBoxStreamEvent =
@@ -185,10 +163,11 @@ internal fun CoreChatStreamEvent.toClient(): FireBoxStreamEvent =
         type = type.toClientStreamType(),
         deltaText = deltaText,
         reasoningText = reasoningText,
-        selection = selection?.toClient(),
         usage = usage?.toClient(),
-        response = response?.toClient(),
-        error = error?.toClient(),
+        modelId = modelId,
+        message = message?.toClient(),
+        finishReason = finishReason,
+        error = error,
     )
 
 private fun ChatMessage.toClient(): FireBoxMessage =
@@ -198,20 +177,11 @@ private fun ChatMessage.toClient(): FireBoxMessage =
         attachments = emptyList(),
     )
 
-private fun ProviderSelection.toClient(): FireBoxProviderSelection =
-    FireBoxProviderSelection(
-        providerId = providerId,
-        providerType = providerType,
-        providerName = providerName,
-        modelId = modelId,
-    )
-
 private fun <O> FunctionCallResponse.toClient(outputSerializer: KSerializer<O>): FireBoxFunctionResponse<O> =
     FireBoxFunctionResponse(
-        virtualModelId = virtualModelId,
+        modelId = modelId,
         output = FunctionSchemaSupport.decode(outputJson, outputSerializer),
         rawJson = outputJson,
-        selection = selection.toClient(),
         usage = usage.toClient(),
         finishReason = finishReason,
     )
@@ -221,14 +191,6 @@ private fun Usage.toClient(): FireBoxUsage =
         promptTokens = promptTokens,
         completionTokens = completionTokens,
         totalTokens = totalTokens,
-    )
-
-private fun FireBoxError.toClient(): FireBoxSdkError =
-    FireBoxSdkError(
-        code = code,
-        message = message,
-        providerType = providerType,
-        providerModelId = providerModelId,
     )
 
 private fun Embedding.toClient(): FireBoxEmbedding =

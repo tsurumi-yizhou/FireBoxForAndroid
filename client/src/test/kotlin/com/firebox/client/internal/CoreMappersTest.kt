@@ -1,25 +1,22 @@
 package com.firebox.client.internal
 
-import com.firebox.client.model.FireBoxFunctionSpec
-import com.firebox.client.model.FireBoxMessage
 import com.firebox.client.model.FireBoxChatRequest
+import com.firebox.client.model.FireBoxMediaFormat
+import com.firebox.client.model.FireBoxMessage
+import com.firebox.client.model.FireBoxFunctionSpec
 import com.firebox.client.model.FireBoxReasoningEffort
-import com.firebox.client.model.FireBoxSdkError
 import com.firebox.core.ChatCompletionResponse
 import com.firebox.core.ChatCompletionResult
 import com.firebox.core.ChatMessage
 import com.firebox.core.Embedding
 import com.firebox.core.EmbeddingResponse
 import com.firebox.core.EmbeddingResult
-import com.firebox.core.FireBoxError
 import com.firebox.core.FunctionCallResponse
 import com.firebox.core.FunctionCallResult
-import com.firebox.core.ModelCandidateInfo
+import com.firebox.core.MediaFormat
 import com.firebox.core.ModelCapabilities
-import com.firebox.core.ModelMediaFormat
-import com.firebox.core.ProviderSelection
+import com.firebox.core.ModelInfo
 import com.firebox.core.Usage
-import com.firebox.core.VirtualModelInfo
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import org.junit.Assert.assertEquals
@@ -34,7 +31,7 @@ class CoreMappersTest {
     fun chatRequest_mapsReasoningEffortToCore() {
         val request =
             FireBoxChatRequest(
-                virtualModelId = "chat-default",
+                modelId = "chat-default",
                 messages = listOf(FireBoxMessage(role = "user", content = "hello")),
                 reasoningEffort = FireBoxReasoningEffort.High,
             )
@@ -42,24 +39,21 @@ class CoreMappersTest {
         val mapped = request.toCore()
 
         assertEquals(com.firebox.core.ReasoningEffort.High, mapped.reasoningEffort)
+        assertEquals("chat-default", mapped.modelId)
     }
 
     @Test
-    fun chatCompletionResult_mapsStructuredErrorToClient() {
+    fun chatCompletionResult_mapsStringErrorToClient() {
         val result =
             ChatCompletionResult(
                 response = null,
-                error = FireBoxError(FireBoxError.NO_ROUTE, "missing route", "OpenAI", "gpt-4.1"),
+                error = "missing route",
             )
 
         val mapped = result.toClient()
 
         assertNull(mapped.response)
-        assertNotNull(mapped.error)
-        assertEquals(FireBoxSdkError.NO_ROUTE, mapped.error?.code)
-        assertEquals("missing route", mapped.error?.message)
-        assertEquals("OpenAI", mapped.error?.providerType)
-        assertEquals("gpt-4.1", mapped.error?.providerModelId)
+        assertEquals("missing route", mapped.error)
     }
 
     @Test
@@ -68,9 +62,8 @@ class CoreMappersTest {
             EmbeddingResult(
                 response =
                     EmbeddingResponse(
-                        virtualModelId = "embedding-default",
+                        modelId = "text-embedding-004",
                         embeddings = listOf(Embedding(index = 0, vector = floatArrayOf(1f, 2f))),
-                        selection = ProviderSelection(2, "Gemini", "Fallback", "text-embedding-004"),
                         usage = Usage(5, 0, 5),
                     ),
                 error = null,
@@ -80,9 +73,7 @@ class CoreMappersTest {
 
         assertNull(mapped.error)
         assertNotNull(mapped.response)
-        assertEquals("embedding-default", mapped.response?.virtualModelId)
-        assertEquals("Gemini", mapped.response?.selection?.providerType)
-        assertEquals("text-embedding-004", mapped.response?.selection?.modelId)
+        assertEquals("text-embedding-004", mapped.response?.modelId)
         assertEquals(5L, mapped.response?.usage?.totalTokens)
         assertEquals(2, mapped.response?.embeddings?.first()?.vector?.size)
     }
@@ -93,9 +84,8 @@ class CoreMappersTest {
             ChatCompletionResult(
                 response =
                     ChatCompletionResponse(
-                        virtualModelId = "chat-default",
+                        modelId = "chat-default",
                         message = ChatMessage(role = "assistant", content = "hello"),
-                        selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
                         usage = Usage(3, 7, 10),
                         finishReason = "stop",
                     ),
@@ -113,7 +103,6 @@ class CoreMappersTest {
     @Test
     fun titleOutputSchema_isValidForOpenAiStructuredOutputs() {
         val schema = FunctionSchemaSupport.schema(TitleTestOutput.serializer())
-        // OpenAI Structured Outputs requires: type=object, no $schema/$defs/$id, additionalProperties=false, no nulls
         assertFalse("Schema must not contain \$schema, got: $schema", schema.contains("\"\$schema\""))
         assertFalse("Schema must not contain \$id, got: $schema", schema.contains("\"\$id\""))
         assertFalse("Schema must not contain \$defs, got: $schema", schema.contains("\"\$defs\""))
@@ -129,7 +118,6 @@ class CoreMappersTest {
     fun functionSpec_toCoreGeneratesStrictSchemas() {
         val spec =
             FireBoxFunctionSpec(
-                virtualModelId = "chat-default",
                 name = "extract_user",
                 description = "Extract a user profile.",
                 inputSerializer = FunctionInput.serializer(),
@@ -138,7 +126,6 @@ class CoreMappersTest {
 
         val request = spec.toCore(FunctionInput(prompt = "hello"))
 
-        assertEquals("chat-default", request.virtualModelId)
         assertTrue(request.inputJson.contains("\"prompt\":\"hello\""))
         assertTrue(request.inputSchemaJson.contains("\"additionalProperties\":false"))
         assertTrue(request.outputSchemaJson.contains("\"required\":[\"name\",\"age\"]"))
@@ -146,29 +133,16 @@ class CoreMappersTest {
     }
 
     @Test
-    fun virtualModelInfo_mapsCapabilitiesToClient() {
+    fun modelInfo_mapsCapabilitiesToClient() {
         val info =
-            VirtualModelInfo(
-                virtualModelId = "chat-default",
-                strategy = "Failover",
+            ModelInfo(
+                modelId = "chat-default",
                 capabilities =
                     ModelCapabilities(
                         reasoning = true,
                         toolCalling = true,
-                        inputFormats = listOf(ModelMediaFormat.Image, ModelMediaFormat.Audio),
-                        outputFormats = listOf(ModelMediaFormat.Video),
-                    ),
-                candidates =
-                    listOf(
-                        ModelCandidateInfo(
-                            providerId = 1,
-                            providerType = "OpenAI",
-                            providerName = "Primary",
-                            baseUrl = "https://example.com",
-                            modelId = "gpt-4.1",
-                            enabledInConfig = true,
-                            capabilitySupported = true,
-                        ),
+                        inputFormats = listOf(MediaFormat.Image, MediaFormat.Audio),
+                        outputFormats = listOf(MediaFormat.Video),
                     ),
                 available = true,
             )
@@ -177,8 +151,8 @@ class CoreMappersTest {
 
         assertTrue(mapped.capabilities.reasoning)
         assertTrue(mapped.capabilities.toolCalling)
-        assertEquals(listOf(com.firebox.client.model.FireBoxMediaFormat.Image, com.firebox.client.model.FireBoxMediaFormat.Audio), mapped.capabilities.inputFormats)
-        assertEquals(listOf(com.firebox.client.model.FireBoxMediaFormat.Video), mapped.capabilities.outputFormats)
+        assertEquals(listOf(FireBoxMediaFormat.Image, FireBoxMediaFormat.Audio), mapped.capabilities.inputFormats)
+        assertEquals(listOf(FireBoxMediaFormat.Video), mapped.capabilities.outputFormats)
     }
 
     @Test
@@ -187,9 +161,8 @@ class CoreMappersTest {
             FunctionCallResult(
                 response =
                     FunctionCallResponse(
-                        virtualModelId = "chat-default",
+                        modelId = "chat-default",
                         outputJson = """{"name":"Ada","age":12}""",
-                        selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
                         usage = Usage(11, 22, 33),
                         finishReason = "stop",
                     ),
@@ -209,9 +182,8 @@ class CoreMappersTest {
         FunctionCallResult(
             response =
                 FunctionCallResponse(
-                    virtualModelId = "chat-default",
+                    modelId = "chat-default",
                     outputJson = """{"name":"Ada","age":"bad"}""",
-                    selection = ProviderSelection(1, "OpenAI", "Primary", "gpt-4.1"),
                     usage = Usage(1, 1, 2),
                     finishReason = "stop",
                 ),

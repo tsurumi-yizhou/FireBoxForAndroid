@@ -43,11 +43,8 @@ import com.firebox.android.link.PendingProviderBindRequest
 import com.firebox.android.model.*
 import kotlinx.coroutines.launch
 
-private const val HttpsSchemePrefix = "https://"
-private const val SettingsKeyGeneral = "general"
 private const val SettingsKeyProviders = "providers"
 private const val SettingsKeyRoutes = "routes"
-private const val SettingsKeyAbout = "about"
 private const val SettingsKeyProviderPrefix = "provider:"
 private const val SettingsKeyProviderEdit = "provider-edit"
 private const val SettingsKeyRouteEdit = "route-edit"
@@ -84,7 +81,6 @@ fun ConfigurationsScreen(
 
     val providers by repo.providers.collectAsState(initial = emptyList())
     val routes by repo.routes.collectAsState(initial = emptyList())
-    val quickToolModel by repo.quickToolModel.collectAsState(initial = QuickToolModelConfig())
 
     var editingProvider by remember { mutableStateOf<ProviderConfig?>(null) }
     var editingRoute by remember { mutableStateOf<RouteRule?>(null) }
@@ -115,7 +111,7 @@ fun ConfigurationsScreen(
 
     LaunchedEffect(isSinglePane, selectedDetailKey) {
         if (!isSinglePane && selectedDetailKey == null) {
-            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyGeneral)
+            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, SettingsKeyProviders)
         }
     }
 
@@ -159,10 +155,8 @@ fun ConfigurationsScreen(
                 selectedDetailKey == SettingsKeyRouteEdit ->
                     stringResource(if (isNewRouteDraft) R.string.route_create_rule_title else R.string.route_edit_rule_title)
                 selectedProvider != null -> selectedProvider.name.ifBlank { stringResource(R.string.model_title_fallback) }
-                selectedDetailKey == SettingsKeyGeneral -> stringResource(R.string.config_section_general)
                 selectedDetailKey == SettingsKeyProviders -> stringResource(R.string.config_section_provider)
                 selectedDetailKey == SettingsKeyRoutes -> stringResource(R.string.config_section_route)
-                selectedDetailKey == SettingsKeyAbout -> stringResource(R.string.config_section_about)
                 else -> stringResource(R.string.screen_configurations)
             },
         navigationIcon =
@@ -196,7 +190,6 @@ fun ConfigurationsScreen(
                         selectedRootKey = selectedRootKey,
                         providers = providers,
                         routes = routes,
-                        quickToolModel = quickToolModel,
                         onOpenDestination = { destination ->
                             coroutineScope.launch {
                                 if (selectedDetailKey != destination) {
@@ -210,17 +203,6 @@ fun ConfigurationsScreen(
             detailPane = {
                 AnimatedPane {
                     when {
-                        selectedDetailKey == SettingsKeyGeneral -> {
-                            GeneralSettingsPane(
-                                providers = providers,
-                                quickToolModel = quickToolModel,
-                                onQuickToolModelChange = { updated ->
-                                    coroutineScope.launch { repo.upsertQuickToolModel(updated) }
-                                },
-                                showHeader = !showDetailAsScreen,
-                            )
-                        }
-
                         selectedDetailKey == SettingsKeyProviders -> {
                             ProviderSettingsPane(
                                 providers = providers,
@@ -230,7 +212,7 @@ fun ConfigurationsScreen(
                                         ProviderConfig(
                                             id = nextId,
                                             type = ProviderType.OpenAI,
-                                            name = "Provider #$nextId",
+                                            name = "",
                                             baseUrl = "",
                                             enabled = true,
                                         )
@@ -280,14 +262,6 @@ fun ConfigurationsScreen(
                                     }
                                 },
                                 onDelete = { ruleId -> coroutineScope.launch { repo.deleteRouteRule(ruleId) } },
-                                showHeader = !showDetailAsScreen,
-                            )
-                        }
-
-                        selectedDetailKey == SettingsKeyAbout -> {
-                            AboutSettingsPane(
-                                providerCount = providers.size,
-                                routeCount = routes.size,
                                 showHeader = !showDetailAsScreen,
                             )
                         }
@@ -670,18 +644,6 @@ private fun AboutInfoRow(
             leading = { SettingsIconBadge(icon = icon) },
         )
     }
-}
-
-@Composable
-private fun QuickToolModelSummaryRow(
-    title: String,
-    summary: String,
-) {
-    SettingsRowLayout(
-        title = title,
-        summary = summary,
-        leading = { SettingsIconBadge(icon = Icons.Default.Bolt, emphasized = true) },
-    )
 }
 
 @Composable
@@ -1629,35 +1591,9 @@ private fun ConfigurationListPane(
     selectedRootKey: String?,
     providers: List<ProviderConfig>,
     routes: List<RouteRule>,
-    quickToolModel: QuickToolModelConfig,
     onOpenDestination: (String) -> Unit,
 ) {
-    val quickToolSummary =
-        remember(providers, quickToolModel) {
-            val provider = providers.firstOrNull { it.id == quickToolModel.providerId }
-            when {
-                provider != null && quickToolModel.modelId.isNotBlank() -> "${provider.name} · ${quickToolModel.modelId}"
-                else -> ""
-            }
-        }
-    val context = LocalContext.current
-    val versionName =
-        remember(context.packageName) {
-            runCatching {
-                context.packageManager.getPackageInfo(context.packageName, 0).versionName
-            }.getOrNull().orEmpty()
-        }
-
     SettingsLazyPage(maxWidth = 560.dp) {
-        item {
-            SettingsIndexRow(
-                title = stringResource(R.string.config_section_general),
-                summary = quickToolSummary.ifBlank { stringResource(R.string.config_section_general_summary) },
-                icon = Icons.Default.Tune,
-                selected = selectedRootKey == SettingsKeyGeneral,
-                onClick = { onOpenDestination(SettingsKeyGeneral) },
-            )
-        }
         item {
             SettingsIndexRow(
                 title = stringResource(R.string.config_section_provider),
@@ -1674,15 +1610,6 @@ private fun ConfigurationListPane(
                 icon = Icons.Default.Route,
                 selected = selectedRootKey == SettingsKeyRoutes,
                 onClick = { onOpenDestination(SettingsKeyRoutes) },
-            )
-        }
-        item {
-            SettingsIndexRow(
-                title = stringResource(R.string.config_section_about),
-                summary = versionName.ifBlank { stringResource(R.string.config_section_about_summary) },
-                icon = Icons.Default.Info,
-                selected = selectedRootKey == SettingsKeyAbout,
-                onClick = { onOpenDestination(SettingsKeyAbout) },
             )
         }
     }
@@ -1727,76 +1654,6 @@ private fun SettingsDetailPlaceholder(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun GeneralSettingsPane(
-    providers: List<ProviderConfig>,
-    quickToolModel: QuickToolModelConfig,
-    onQuickToolModelChange: (QuickToolModelConfig) -> Unit,
-    showHeader: Boolean,
-) {
-    SettingsLazyPage(
-        headerTitle = if (showHeader) stringResource(R.string.config_section_general) else null,
-        headerSummary = if (showHeader) stringResource(R.string.config_section_general_summary) else null,
-    ) {
-        item {
-            QuickToolModelCard(
-                providers = providers,
-                config = quickToolModel,
-                onChange = onQuickToolModelChange,
-            )
-        }
-    }
-}
-
-@Composable
-private fun AboutSettingsPane(
-    providerCount: Int,
-    routeCount: Int,
-    showHeader: Boolean,
-) {
-    val context = LocalContext.current
-    val packageName = context.packageName
-    val versionName =
-        remember(packageName) {
-            runCatching {
-                context.packageManager.getPackageInfo(packageName, 0).versionName
-            }.getOrNull().orEmpty()
-        }
-    SettingsLazyPage(
-        headerTitle = if (showHeader) stringResource(R.string.config_section_about) else null,
-        headerSummary = if (showHeader) stringResource(R.string.config_section_about_summary) else null,
-    ) {
-        item {
-            AboutInfoRow(
-                title = stringResource(R.string.config_about_version),
-                summary = versionName.ifBlank { stringResource(R.string.common_placeholder_dash) },
-                icon = Icons.Default.Info,
-            )
-        }
-        item {
-            AboutInfoRow(
-                title = stringResource(R.string.config_about_package),
-                summary = packageName,
-                icon = Icons.Default.Android,
-            )
-        }
-        item {
-            AboutInfoRow(
-                title = stringResource(R.string.config_about_provider_count),
-                summary = stringResource(R.string.config_about_provider_count_value, providerCount),
-                icon = Icons.Default.Cloud,
-            )
-        }
-        item {
-            AboutInfoRow(
-                title = stringResource(R.string.config_about_route_count),
-                summary = stringResource(R.string.config_about_route_count_value, routeCount),
-                icon = Icons.Default.Route,
-            )
         }
     }
 }
@@ -1879,84 +1736,6 @@ private fun RouteSettingsPane(
     }
 }
 
-@Composable
-private fun QuickToolModelCard(
-    providers: List<ProviderConfig>,
-    config: QuickToolModelConfig,
-    onChange: (QuickToolModelConfig) -> Unit,
-) {
-    val availableProviders = providers.filter { it.enabledModels.isNotEmpty() }
-    val resolvedProvider =
-        availableProviders.firstOrNull { it.id == config.providerId } ?: availableProviders.firstOrNull()
-    val resolvedProviderId = resolvedProvider?.id ?: 0
-    val availableModelIds = resolvedProvider?.enabledModels.orEmpty()
-    val resolvedModelId =
-        when {
-            config.modelId in availableModelIds -> config.modelId
-            availableModelIds.isNotEmpty() -> availableModelIds.first()
-            else -> ""
-        }
-
-    SettingsGroupSurface {
-        QuickToolModelSummaryRow(
-            title = stringResource(R.string.config_quick_tool_model),
-            summary =
-                if (resolvedProvider != null && resolvedModelId.isNotBlank()) {
-                    "${resolvedProvider.name} · $resolvedModelId"
-                } else {
-                    stringResource(R.string.config_quick_tool_model_unset)
-                },
-        )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.config_quick_tool_model_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (availableProviders.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.model_dropdown_empty_placeholder),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                ProviderInstanceDropdown(
-                    providers = availableProviders,
-                    selectedProviderId = resolvedProviderId,
-                    onSelect = { providerId ->
-                        val modelId = availableProviders.firstOrNull { it.id == providerId }?.enabledModels?.firstOrNull().orEmpty()
-                        onChange(
-                            QuickToolModelConfig(
-                                providerId = providerId,
-                                modelId = modelId,
-                            ),
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                ModelIdDropdown(
-                    modelIds = availableModelIds,
-                    selectedModelId = resolvedModelId,
-                    onSelect = { modelId ->
-                        onChange(
-                            QuickToolModelConfig(
-                                providerId = resolvedProviderId,
-                                modelId = modelId,
-                            ),
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-}
-
 private data class ModelGroup(
     val name: String?,
     val modelIds: List<String>,
@@ -1964,37 +1743,20 @@ private data class ModelGroup(
 
 private fun sanitizeBaseUrlEditorInput(input: String): String {
     val trimmed = input.trim()
-    if (trimmed.isBlank()) {
-        return HttpsSchemePrefix
-    }
+    if (trimmed.isBlank()) return ""
 
-    val collapsed =
-        Regex("^(?:(https?)://)+", RegexOption.IGNORE_CASE)
-            .replace(trimmed) { matchResult ->
-                "${matchResult.groupValues[1].lowercase()}://"
-            }
-
-    return when {
-        collapsed.startsWith("https://", ignoreCase = true) -> collapsed
-        collapsed.startsWith("http://", ignoreCase = true) -> collapsed
-        else -> HttpsSchemePrefix + collapsed.removePrefix("//")
-    }
+    return Regex("^(?:(https?)://)+", RegexOption.IGNORE_CASE)
+        .replace(trimmed) { matchResult ->
+            "${matchResult.groupValues[1].lowercase()}://"
+        }
 }
 
 private fun baseUrlEditorValue(baseUrl: String): String =
-    if (baseUrl.isBlank()) {
-        HttpsSchemePrefix
-    } else {
-        sanitizeBaseUrlEditorInput(baseUrl)
-    }
+    sanitizeBaseUrlEditorInput(baseUrl)
 
 private fun normalizeBaseUrlDraft(type: ProviderType, baseUrl: String): String {
     val trimmed = baseUrl.trim()
-    if (trimmed.isBlank() || trimmed.equals(HttpsSchemePrefix, ignoreCase = true) || trimmed.equals(
-            "http://",
-            ignoreCase = true
-        )
-    ) {
+    if (trimmed.isBlank()) {
         return ""
     }
 

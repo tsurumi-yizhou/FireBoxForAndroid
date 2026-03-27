@@ -5,6 +5,6 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class EmbeddingRequest(
-    val virtualModelId: String,
+    val modelId: String,
     val input: List<String>,
 ) : Parcelable

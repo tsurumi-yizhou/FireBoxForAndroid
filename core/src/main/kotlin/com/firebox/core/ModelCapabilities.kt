@@ -7,6 +7,6 @@ import kotlinx.parcelize.Parcelize
 data class ModelCapabilities(
     val reasoning: Boolean = false,
     val toolCalling: Boolean = false,
-    val inputFormats: List<ModelMediaFormat> = emptyList(),
-    val outputFormats: List<ModelMediaFormat> = emptyList(),
+    val inputFormats: List<MediaFormat> = emptyList(),
+    val outputFormats: List<MediaFormat> = emptyList(),
 ) : Parcelable

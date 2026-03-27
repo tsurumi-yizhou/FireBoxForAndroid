@@ -8,6 +8,7 @@ import com.firebox.android.data.db.UsageAggregate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 
 class FireBoxStatsRepository(context: Context) {
@@ -29,6 +30,17 @@ class FireBoxStatsRepository(context: Context) {
         val from = now.withDayOfMonth(1).format(dateFormatter)
         val to = now.format(dateFormatter)
         return dao.observeAggregate(from, to).map { it ?: UsageAggregate.Zero }
+    }
+
+    suspend fun getDailyAggregate(year: Int, month: Int, day: Int): UsageAggregate {
+        val date = LocalDate.of(year, month, day).format(dateFormatter)
+        return dao.getAggregate(date, date) ?: UsageAggregate.Zero
+    }
+
+    suspend fun getMonthlyAggregate(year: Int, month: Int): UsageAggregate {
+        val start = YearMonth.of(year, month).atDay(1).format(dateFormatter)
+        val end = YearMonth.of(year, month).atEndOfMonth().format(dateFormatter)
+        return dao.getAggregate(start, end) ?: UsageAggregate.Zero
     }
 
     suspend fun recordUsage(
@@ -67,4 +79,3 @@ class FireBoxStatsRepository(context: Context) {
         fun yesterday(): String = LocalDate.now().minusDays(1).format(dateFormatter)
     }
 }
-

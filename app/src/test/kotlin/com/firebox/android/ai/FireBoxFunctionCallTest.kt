@@ -48,7 +48,7 @@ class FireBoxFunctionCallTest {
                 )
 
             try {
-                dispatcher.callFunction(snapshot, "chat-default", functionRequest())
+                dispatcher.callFunction(snapshot, functionRequest())
             } catch (error: FireBoxServiceException) {
                 assertEquals(FireBoxError.NO_CANDIDATE, error.error.code)
                 return@runBlocking
@@ -95,6 +95,7 @@ class FireBoxFunctionCallTest {
 
     private fun functionRequest() =
         FunctionCallRequest(
+            modelId = "chat-default",
             functionName = "extract_user",
             functionDescription = "Build a user summary.",
             inputJson = """{"prompt":"hello"}""",

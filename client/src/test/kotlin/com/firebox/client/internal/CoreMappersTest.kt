@@ -33,6 +33,8 @@ class CoreMappersTest {
             FireBoxChatRequest(
                 modelId = "chat-default",
                 messages = listOf(FireBoxMessage(role = "user", content = "hello")),
+                temperature = null,
+                maxOutputTokens = null,
                 reasoningEffort = FireBoxReasoningEffort.High,
             )
 
@@ -122,14 +124,17 @@ class CoreMappersTest {
                 description = "Extract a user profile.",
                 inputSerializer = FunctionInput.serializer(),
                 outputSerializer = FunctionOutput.serializer(),
+                temperature = null,
+                maxOutputTokens = null,
             )
 
-        val request = spec.toCore(FunctionInput(prompt = "hello"))
+        val request = spec.toCore(modelId = "chat-default", input = FunctionInput(prompt = "hello"))
 
         assertTrue(request.inputJson.contains("\"prompt\":\"hello\""))
         assertTrue(request.inputSchemaJson.contains("\"additionalProperties\":false"))
         assertTrue(request.outputSchemaJson.contains("\"required\":[\"name\",\"age\"]"))
         assertFalse(request.outputSchemaJson.isBlank())
+        assertEquals("chat-default", request.modelId)
     }
 
     @Test

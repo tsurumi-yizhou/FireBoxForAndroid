@@ -163,12 +163,8 @@ internal class FireBoxProviderGateway {
                         add(buildOpenAiMessage(message))
                     }
                 }
-                if (request.temperature >= 0f) {
-                    put("temperature", request.temperature)
-                }
-                if (request.maxOutputTokens > 0) {
-                    put("max_tokens", request.maxOutputTokens)
-                }
+                request.temperature?.let { put("temperature", it) }
+                request.maxOutputTokens?.let { put("max_tokens", it) }
                 if (request.reasoningEnabled) {
                     request.reasoningEffort?.let { put("reasoning_effort", it.toOpenAiWireValue()) }
                 }
@@ -214,12 +210,8 @@ internal class FireBoxProviderGateway {
                         add(buildOpenAiMessage(message))
                     }
                 }
-                if (request.temperature >= 0f) {
-                    put("temperature", request.temperature)
-                }
-                if (request.maxOutputTokens > 0) {
-                    put("max_tokens", request.maxOutputTokens)
-                }
+                request.temperature?.let { put("temperature", it) }
+                request.maxOutputTokens?.let { put("max_tokens", it) }
                 if (request.reasoningEnabled) {
                     request.reasoningEffort?.let { put("reasoning_effort", it.toOpenAiWireValue()) }
                 }
@@ -486,11 +478,9 @@ internal class FireBoxProviderGateway {
         val builder =
             MessageCreateParams.builder()
                 .model(modelId)
-                .maxTokens(request.maxOutputTokens.takeIf { it > 0 }?.toLong() ?: 1024L)
+                .maxTokens(request.requireAnthropicMaxOutputTokens().toLong())
 
-        if (request.temperature >= 0f) {
-            builder.temperature(request.temperature.toDouble())
-        }
+        request.temperature?.let { builder.temperature(it.toDouble()) }
         if (request.reasoningEnabled) {
             builder.enabledThinking(request.anthropicThinkingBudget())
         }
@@ -515,16 +505,14 @@ internal class FireBoxProviderGateway {
         val builder =
             MessageCreateParams.builder()
                 .model(modelId)
-                .maxTokens(request.maxOutputTokens.takeIf { it > 0 }?.toLong() ?: 1024L)
+                .maxTokens(request.requireAnthropicMaxOutputTokens().toLong())
                 .system(
                     "You implement the function ${request.functionName}. " +
                         "Return only valid JSON that matches the output schema exactly. " +
                         "Do not include markdown fences or any extra explanation.",
                 )
                 .addUserMessage(buildFunctionCallPrompt(request))
-        if (request.temperature >= 0f) {
-            builder.temperature(request.temperature.toDouble())
-        }
+        request.temperature?.let { builder.temperature(it.toDouble()) }
         return builder.build()
     }
 
@@ -609,12 +597,8 @@ internal class FireBoxProviderGateway {
 
     private fun buildGeminiChatConfig(request: ProviderChatRequest): GenerateContentConfig {
         val builder = GenerateContentConfig.builder()
-        if (request.temperature >= 0f) {
-            builder.temperature(request.temperature)
-        }
-        if (request.maxOutputTokens > 0) {
-            builder.maxOutputTokens(request.maxOutputTokens)
-        }
+        request.temperature?.let { builder.temperature(it) }
+        request.maxOutputTokens?.let { builder.maxOutputTokens(it) }
         if (request.reasoningEnabled) {
             val thinkingConfig =
                 ThinkingConfig.builder()
@@ -657,12 +641,8 @@ internal class FireBoxProviderGateway {
                 )
                 .responseMimeType("application/json")
                 .responseJsonSchema(parseSchemaNode(request.outputSchemaJson))
-        if (request.temperature >= 0f) {
-            builder.temperature(request.temperature)
-        }
-        if (request.maxOutputTokens > 0) {
-            builder.maxOutputTokens(request.maxOutputTokens)
-        }
+        request.temperature?.let { builder.temperature(it) }
+        request.maxOutputTokens?.let { builder.maxOutputTokens(it) }
         return builder.build()
     }
 
@@ -810,10 +790,8 @@ internal class FireBoxProviderGateway {
         val conversation = request.messages.filter { it.role != "system" }
         return buildJsonObject {
             put("model", modelId)
-            put("max_tokens", request.maxOutputTokens.takeIf { it > 0 } ?: 1024)
-            if (request.temperature >= 0f) {
-                put("temperature", request.temperature)
-            }
+            put("max_tokens", request.requireAnthropicMaxOutputTokens())
+            request.temperature?.let { put("temperature", it) }
             if (stream) {
                 put("stream", true)
             }
@@ -931,14 +909,10 @@ internal class FireBoxProviderGateway {
                     add(buildGeminiMessage(message))
                 }
             }
-            if (request.temperature >= 0f || request.maxOutputTokens > 0) {
+            if (request.temperature != null || request.maxOutputTokens != null) {
                 putJsonObject("generationConfig") {
-                    if (request.temperature >= 0f) {
-                        put("temperature", request.temperature)
-                    }
-                    if (request.maxOutputTokens > 0) {
-                        put("maxOutputTokens", request.maxOutputTokens)
-                    }
+                    request.temperature?.let { put("temperature", it) }
+                    request.maxOutputTokens?.let { put("maxOutputTokens", it) }
                 }
             }
         }
@@ -1349,10 +1323,8 @@ internal class FireBoxProviderGateway {
         val outputSchema = parseJsonObject(request.outputSchemaJson, provider, modelId)
         return buildJsonObject {
             put("model", modelId)
-            put("max_tokens", request.maxOutputTokens.takeIf { it > 0 } ?: 1024)
-            if (request.temperature >= 0f) {
-                put("temperature", request.temperature)
-            }
+            put("max_tokens", request.requireAnthropicMaxOutputTokens())
+            request.temperature?.let { put("temperature", it) }
             put(
                 "system",
                 "You implement the function ${request.functionName}. " +
@@ -1428,12 +1400,8 @@ internal class FireBoxProviderGateway {
                     put("schema", outputSchema)
                 }
             }
-            if (request.temperature >= 0f) {
-                put("temperature", request.temperature)
-            }
-            if (request.maxOutputTokens > 0) {
-                put("max_tokens", request.maxOutputTokens)
-            }
+            request.temperature?.let { put("temperature", it) }
+            request.maxOutputTokens?.let { put("max_tokens", it) }
         }
     }
 
@@ -1471,12 +1439,8 @@ internal class FireBoxProviderGateway {
             putJsonObject("generationConfig") {
                 put("responseMimeType", "application/json")
                 put("responseSchema", outputSchema)
-                if (request.temperature >= 0f) {
-                    put("temperature", request.temperature)
-                }
-                if (request.maxOutputTokens > 0) {
-                    put("maxOutputTokens", request.maxOutputTokens)
-                }
+                request.temperature?.let { put("temperature", it) }
+                request.maxOutputTokens?.let { put("maxOutputTokens", it) }
             }
         }
     }
@@ -1627,8 +1591,8 @@ internal data class ProviderChatDelta(
 internal data class ProviderChatRequest(
     val modelId: String,
     val messages: List<ProviderChatMessage>,
-    val temperature: Float = -1f,
-    val maxOutputTokens: Int = -1,
+    val temperature: Float?,
+    val maxOutputTokens: Int?,
     val reasoningEnabled: Boolean = false,
     val reasoningEffort: ReasoningEffort? = null,
 )
@@ -1675,14 +1639,23 @@ private fun ProviderChatRequest.anthropicThinkingBudget(): Long =
         ReasoningEffort.Medium -> 2048L
         ReasoningEffort.High -> 4096L
         ReasoningEffort.Max -> 8192L
-        null ->
-            maxOutputTokens
-                .takeIf { it > 0 }
-                ?.coerceAtMost(2048)
-                ?.coerceAtLeast(1024)
-                ?.toLong()
-                ?: 1024L
+        null -> requireAnthropicMaxOutputTokens().coerceAtMost(2048).coerceAtLeast(1024).toLong()
     }
+
+private fun ProviderChatRequest.requireAnthropicMaxOutputTokens(): Int =
+    requirePositiveMaxOutputTokens(maxOutputTokens, "Anthropic chat")
+
+private fun FunctionCallRequest.requireAnthropicMaxOutputTokens(): Int =
+    requirePositiveMaxOutputTokens(maxOutputTokens, "Anthropic function call")
+
+private fun requirePositiveMaxOutputTokens(
+    maxOutputTokens: Int?,
+    operation: String,
+): Int {
+    val resolved = maxOutputTokens ?: throw IllegalArgumentException("$operation requires maxOutputTokens")
+    require(resolved > 0) { "$operation requires maxOutputTokens > 0" }
+    return resolved
+}
 
 private fun ReasoningEffort.toGeminiThinkingLevel(): ThinkingLevel.Known =
     when (this) {

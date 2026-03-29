@@ -386,6 +386,8 @@ class ChatViewModel(
         val request = FireBoxChatRequest(
             modelId = model,
             messages = allMessages,
+            temperature = null,
+            maxOutputTokens = null,
             reasoningEffort = _uiState.value.selectedReasoningEffort,
         )
         currentUserMessageId = messageId

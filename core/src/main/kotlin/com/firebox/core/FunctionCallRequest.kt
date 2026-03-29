@@ -5,11 +5,12 @@ import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class FunctionCallRequest(
+    val modelId: String,
     val functionName: String,
     val functionDescription: String,
     val inputJson: String,
     val inputSchemaJson: String,
     val outputSchemaJson: String,
-    val temperature: Float = 0f,
-    val maxOutputTokens: Int = -1,
+    val temperature: Float?,
+    val maxOutputTokens: Int?,
 ) : Parcelable

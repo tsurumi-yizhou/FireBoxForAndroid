@@ -20,8 +20,8 @@ data class FireBoxMessage(
 data class FireBoxChatRequest(
     val modelId: String,
     val messages: List<FireBoxMessage>,
-    val temperature: Float = -1f,
-    val maxOutputTokens: Int = -1,
+    val temperature: Float?,
+    val maxOutputTokens: Int?,
     val reasoningEffort: FireBoxReasoningEffort? = null,
 )
 
@@ -131,8 +131,8 @@ data class FireBoxFunctionSpec<I, O>(
     val description: String,
     val inputSerializer: KSerializer<I>,
     val outputSerializer: KSerializer<O>,
-    val temperature: Float = 0f,
-    val maxOutputTokens: Int = -1,
+    val temperature: Float?,
+    val maxOutputTokens: Int?,
 )
 
 data class FireBoxFunctionResponse<O>(

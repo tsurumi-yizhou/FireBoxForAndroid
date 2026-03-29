@@ -22,5 +22,5 @@ interface ICapabilityService {
 
     EmbeddingResult CreateEmbeddings(in EmbeddingRequest req);
 
-    FunctionCallResult CallFunction(in String modelId, in FunctionCallRequest req);
+    FunctionCallResult CallFunction(in FunctionCallRequest req);
 }

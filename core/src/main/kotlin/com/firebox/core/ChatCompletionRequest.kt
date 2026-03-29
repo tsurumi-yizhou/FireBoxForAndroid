@@ -7,7 +7,7 @@ import kotlinx.parcelize.Parcelize
 data class ChatCompletionRequest(
     val modelId: String,
     val messages: List<ChatMessage>,
-    val temperature: Float = -1f,
-    val maxOutputTokens: Int = -1,
+    val temperature: Float?,
+    val maxOutputTokens: Int?,
     val reasoningEffort: ReasoningEffort? = null,
 ) : Parcelable

@@ -238,7 +238,7 @@ class FireBoxClient private constructor(private val context: Context) {
     ): FireBoxFunctionResult<O> {
         val service = capabilityService ?: throw IllegalStateException("FireBox service is not connected")
         return try {
-            service.CallFunction(modelId, spec.toCore(input)).toClient(spec.outputSerializer)
+            service.CallFunction(spec.toCore(modelId, input)).toClient(spec.outputSerializer)
         } catch (e: RemoteException) {
             Log.e(TAG, "Failed to call function", e)
             throw IllegalStateException("FireBox function call transport failed", e)
@@ -250,8 +250,8 @@ class FireBoxClient private constructor(private val context: Context) {
         name: String,
         description: String,
         input: I,
-        temperature: Float = 0f,
-        maxOutputTokens: Int = -1,
+        temperature: Float?,
+        maxOutputTokens: Int?,
     ): FireBoxFunctionResult<O> =
         callFunction(
             modelId = modelId,

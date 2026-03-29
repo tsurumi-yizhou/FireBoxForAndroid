@@ -102,11 +102,10 @@ internal class FireBoxAiDispatcher(
 
     suspend fun callFunction(
         snapshot: RuntimeSnapshot,
-        modelId: String,
         request: FunctionCallRequest,
     ): ExecutedResponse<FunctionCallResponse> {
-        validateFunctionCallRequest(modelId, request)
-        val route = resolveRoute(snapshot, modelId)
+        validateFunctionCallRequest(request)
+        val route = resolveRoute(snapshot, request.modelId)
         return executeCandidates(
             route = route,
             snapshot = snapshot,
@@ -116,7 +115,7 @@ internal class FireBoxAiDispatcher(
             ExecutedResponse(
                 response =
                     FunctionCallResponse(
-                        modelId = modelId,
+                        modelId = request.modelId,
                         outputJson = result.outputJson,
                         usage = result.usage,
                         finishReason = result.finishReason,
@@ -388,6 +387,10 @@ internal class FireBoxAiDispatcher(
         if (request.messages.isEmpty()) {
             throw invalidArgument("messages 不能为空")
         }
+        validateGenerationParameters(
+            temperature = request.temperature,
+            maxOutputTokens = request.maxOutputTokens,
+        )
         request.messages.forEach { message -> validateChatMessage(message) }
     }
 
@@ -415,11 +418,8 @@ internal class FireBoxAiDispatcher(
         }
     }
 
-    private fun validateFunctionCallRequest(
-        modelId: String,
-        request: FunctionCallRequest,
-    ) {
-        if (modelId.isBlank()) {
+    private fun validateFunctionCallRequest(request: FunctionCallRequest) {
+        if (request.modelId.isBlank()) {
             throw invalidArgument("modelId 不能为空")
         }
         if (request.functionName.isBlank()) {
@@ -433,6 +433,22 @@ internal class FireBoxAiDispatcher(
         }
         if (request.outputSchemaJson.isBlank()) {
             throw invalidArgument("outputSchemaJson 不能为空")
+        }
+        validateGenerationParameters(
+            temperature = request.temperature,
+            maxOutputTokens = request.maxOutputTokens,
+        )
+    }
+
+    private fun validateGenerationParameters(
+        temperature: Float?,
+        maxOutputTokens: Int?,
+    ) {
+        if (temperature != null && temperature < 0f) {
+            throw invalidArgument("temperature 必须省略或大于等于 0")
+        }
+        if (maxOutputTokens != null && maxOutputTokens <= 0) {
+            throw invalidArgument("maxOutputTokens 必须省略或大于 0")
         }
     }
 

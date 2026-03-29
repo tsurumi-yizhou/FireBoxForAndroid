@@ -190,9 +190,7 @@ class FireBoxService : Service() {
             }
         }
 
-        override fun CallFunction(modelId: String?, req: FunctionCallRequest?): FunctionCallResult {
-            val selectedModelId = modelId?.trim().orEmpty()
-            require(selectedModelId.isNotBlank()) { "modelId 不能为空" }
+        override fun CallFunction(req: FunctionCallRequest?): FunctionCallResult {
             val request = req ?: throw IllegalArgumentException("req 不能为空")
             val caller = enforceCapabilityAccess()
             return runBlocking(Dispatchers.IO) {
@@ -202,7 +200,7 @@ class FireBoxService : Service() {
                 ) {
                     connectionStateHolder.onRequestMade(caller.callingUid, caller.packageName)
                     recordClientRequestAsync(caller.packageName, caller.callingUid)
-                    val response = aiDispatcher.callFunction(runtimeSnapshot.value, selectedModelId, request)
+                    val response = aiDispatcher.callFunction(runtimeSnapshot.value, request)
                     recordUsageAsync(response.response.usage, response.providerType, response.providerModelId)
                     response
                 }
@@ -586,7 +584,7 @@ class FireBoxService : Service() {
 
     private fun RouteStrategy.toProtocolString(): String =
         when (this) {
-            RouteStrategy.Failover -> "Ordered"
+            RouteStrategy.Failover -> RouteStrategy.Failover.displayName
             RouteStrategy.Random -> "Random"
         }
 

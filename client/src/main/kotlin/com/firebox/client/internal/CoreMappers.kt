@@ -55,8 +55,12 @@ internal fun FireBoxEmbeddingRequest.toCore(): EmbeddingRequest =
         input = input,
     )
 
-internal fun <I, O> FireBoxFunctionSpec<I, O>.toCore(input: I): FunctionCallRequest =
+internal fun <I, O> FireBoxFunctionSpec<I, O>.toCore(
+    modelId: String,
+    input: I,
+): FunctionCallRequest =
     FunctionCallRequest(
+        modelId = modelId,
         functionName = name,
         functionDescription = description,
         inputJson = FunctionSchemaSupport.encode(input, inputSerializer),
